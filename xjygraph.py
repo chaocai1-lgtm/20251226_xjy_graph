@@ -13,6 +13,8 @@ from neo4j import GraphDatabase
 from pyvis.network import Network
 import streamlit.components.v1 as components
 import hashlib
+import time
+from streamlit_javascript import st_javascript
 
 # ==================== 配置区 ====================
 # 1. 专属标签 (通过修改这个后缀，区分不同的人)
@@ -21,8 +23,8 @@ TARGET_LABEL = "Danmu_xujiying"
 # 2. 管理员密码
 ADMIN_PASSWORD = "admin888"
 
-# 3. 数据库配置 (Neo4j Aura 云端数据库)
-NEO4J_URI = "neo4j+s://7eb127cc.databases.neo4j.io"
+# 3. 数据库配置
+NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = "wE7pV36hqNSo43mpbjTlfzE7n99NWcYABDFqUGvgSrk"
 
@@ -435,33 +437,6 @@ def render_info_card(node_data):
 def student_page(conn, json_data):
     """学生端：浏览知识图谱"""
     
-    # ========== 首先处理 URL 参数中的交互记录（在其他一切之前）==========
-    query_params = st.query_params
-    sync_data = query_params.get("sync_data", None)
-    
-    if sync_data and st.session_state.get("student_id"):
-        try:
-            import urllib.parse
-            decoded_data = urllib.parse.unquote(sync_data)
-            # 格式: node1|label1,node2|label2,...
-            pairs = decoded_data.split(",")
-            synced = 0
-            for pair in pairs:
-                if "|" in pair:
-                    parts = pair.split("|")
-                    if len(parts) >= 2:
-                        node_id = urllib.parse.unquote(parts[0])
-                        node_label = urllib.parse.unquote(parts[1])
-                        record_interaction(conn, st.session_state.student_id, node_id, node_label, 'view', 0)
-                        synced += 1
-            if synced > 0:
-                st.toast(f"✅ 已保存 {synced} 条记录", icon="✅")
-        except Exception as e:
-            st.toast(f"保存失败: {e}", icon="❌")
-        finally:
-            # 清除 URL 参数（不触发 rerun）
-            st.query_params.clear()
-    
     # ========== 左侧侧边栏：登录和节点详情 ==========
     with st.sidebar:
         st.markdown("### 👤 学生登录")
@@ -477,23 +452,40 @@ def student_page(conn, json_data):
         
         if st.session_state.get("student_id"):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
-            
-            # 显示已记录的节点数量
-            if conn.driver:
-                try:
-                    result = conn.execute_query(f"""
-                        MATCH (i:Interaction_{TARGET_LABEL} {{student_id: $student_id}})
-                        RETURN count(i) as count
-                    """, {"student_id": st.session_state.student_id})
-                    if result and len(result) > 0:
-                        count = result[0].get('count', 0)
-                        if count > 0:
-                            st.caption(f"📊 已浏览 {count} 个节点")
-                except:
-                    pass
         
         st.markdown("---")
-        st.markdown("💡 **提示**: 点击图谱节点查看详情")
+        st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
+        
+        # 读取并处理localStorage中的交互记录
+        if st.session_state.get("student_id"):
+            try:
+                interactions_js = st_javascript("""
+                    var interactions = localStorage.getItem('pending_interactions');
+                    if (interactions) {
+                        localStorage.removeItem('pending_interactions');
+                        interactions;
+                    } else {
+                        null;
+                    }
+                """, key=f"read_interactions_{int(time.time())}")
+                
+                if interactions_js:
+                    import json as json_lib
+                    try:
+                        interactions_list = json_lib.loads(interactions_js)
+                        for interaction in interactions_list:
+                            record_interaction(
+                                conn,
+                                st.session_state.student_id,
+                                interaction.get('node_id', ''),
+                                interaction.get('node_label', ''),
+                                'view',
+                                0
+                            )
+                    except:
+                        pass
+            except:
+                pass
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -628,8 +620,6 @@ def student_page(conn, json_data):
     var edgesData = {edges_json};
     var originalColors = {{}};
     var networkRef = null;
-    var clickedNodes = [];  // 记录已点击的节点
-    var saveTimer = null;   // 自动保存定时器
     
     function closeDetailPanel() {{
         document.getElementById('node-detail-panel').style.display = 'none';
@@ -743,21 +733,18 @@ def student_page(conn, json_data):
                         var node = nodesData[nodeId];
                         if (node) {{
                             showNodeDetail(node, nodeId);
-                            highlightConnected(nodeId);
-                            
-                            // 记录点击的节点（避免重复）
-                            var exists = clickedNodes.some(function(n) {{ return n.id === nodeId; }});
-                            if (!exists) {{
-                                clickedNodes.push({{
-                                    id: nodeId,
-                                    label: node.label || nodeId
+                            highlightConnected(nodeId);                            
+                            // 记录交互到localStorage
+                            try {{
+                                var pending = localStorage.getItem('pending_interactions');
+                                var interactions = pending ? JSON.parse(pending) : [];
+                                interactions.push({{
+                                    node_id: nodeId,
+                                    node_label: node.label || nodeId,
+                                    timestamp: new Date().toISOString()
                                 }});
-                                
-                                // 重置定时器，用户停止点击3秒后自动保存
-                                if (saveTimer) clearTimeout(saveTimer);
-                                saveTimer = setTimeout(autoSaveRecords, 3000);
-                            }}
-                        }}
+                                localStorage.setItem('pending_interactions', JSON.stringify(interactions));
+                            }} catch(e) {{}}                        }}
                     }} else {{
                         // 点击空白处关闭面板并恢复颜色
                         closeDetailPanel();
@@ -765,27 +752,6 @@ def student_page(conn, json_data):
                 }});
             }} else if (attempts < maxAttempts) {{
                 setTimeout(tryBindEvents, 300);
-            }}
-        }}
-        
-        // 自动保存记录到服务器
-        function autoSaveRecords() {{
-            if (clickedNodes.length === 0) return;
-            
-            try {{
-                // 构建数据字符串: node1|label1,node2|label2,...
-                var dataStr = clickedNodes.map(function(n) {{
-                    return encodeURIComponent(n.id) + '|' + encodeURIComponent(n.label);
-                }}).join(',');
-                
-                var currentUrl = window.parent.location.href.split('?')[0];
-                var newUrl = currentUrl + '?sync_data=' + encodeURIComponent(dataStr);
-                window.parent.location.href = newUrl;
-            }} catch(e) {{
-                console.log('Auto save failed:', e);
-            }}
-        }}
-                console.log('Error saving records:', e);
             }}
         }}
         
@@ -875,50 +841,30 @@ def admin_page(conn, json_data):
     st.caption(f"共获取到 {len(interactions)} 条记录")
     
     if not interactions:
-        st.info("📭 暂无学生访问数据")
+        st.warning("暂无学生访问数据。请先在学生端浏览知识图谱，数据会自动记录。")
         
-        st.markdown("""
-        ### 📝 如何开始收集数据？
+        # 显示本地文件状态
+        if os.path.exists(INTERACTIONS_FILE):
+            st.info(f"✅ 本地记录文件存在: {INTERACTIONS_FILE}")
+            try:
+                with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
+                    local_data = json.load(f)
+                    st.write(f"本地文件中有 {len(local_data)} 条记录")
+                    if local_data:
+                        st.dataframe(pd.DataFrame(local_data), use_container_width=True)
+            except Exception as e:
+                st.error(f"读取本地文件失败: {e}")
+        else:
+            st.warning(f"❌ 本地记录文件不存在: {INTERACTIONS_FILE}")
         
-        1. **学生端操作**：
-           - 切换到"🎓 学生端"页面
-           - 输入学号或姓名登录
-           - 点击知识图谱中的节点进行浏览
-           - 数据会自动记录
-        
-        2. **数据存储位置**：
-           - **云端数据库**：已配置 Neo4j Aura（推荐），数据持久化保存
-           - **本地备份**：同时保存到 `interactions_log.json`（应用重启后可能丢失）
-        
-        3. **数据收集后**：
-           - 返回此页面查看完整的学习数据分析
-           - 可下载 CSV 格式的访问记录
-        """)
-        
-        # 仅在开发环境显示技术信息
-        with st.expander("🔧 技术信息（开发调试用）"):
-            st.caption("**数据存储状态**")
-            if conn.driver:
-                st.success("✅ Neo4j 数据库连接成功")
-            else:
-                st.warning("⚠️ Neo4j 数据库未连接，使用本地文件模式")
-            
-            st.caption(f"**本地文件路径**: `{INTERACTIONS_FILE}`")
-            if os.path.exists(INTERACTIONS_FILE):
-                st.caption("✅ 本地记录文件已存在")
-            else:
-                st.caption("📝 本地记录文件将在首次记录时自动创建")
-            
-            # 提供初始化数据选项
-            if conn.driver:
-                if st.button("🔄 重新初始化知识图谱数据到Neo4j"):
-                    with st.spinner("正在导入数据..."):
-                        if init_neo4j_data(conn, json_data):
-                            init_interaction_table(conn)
-                            st.success("✅ 数据初始化成功！")
-                        else:
-                            st.error("❌ 数据初始化失败")
-        
+        # 提供初始化数据选项
+        if conn.driver and st.button("🔄 初始化知识图谱数据到Neo4j"):
+            with st.spinner("正在导入数据..."):
+                if init_neo4j_data(conn, json_data):
+                    init_interaction_table(conn)
+                    st.success("✅ 数据初始化成功！")
+                else:
+                    st.error("❌ 数据初始化失败")
         return
     
     df = pd.DataFrame(interactions)
