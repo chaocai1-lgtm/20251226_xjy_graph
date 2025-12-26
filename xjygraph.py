@@ -975,43 +975,93 @@ def admin_page(conn, json_data):
     # 数据管理
     st.markdown("## ⚙️ 数据管理")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
+    
     with col1:
-        if st.button("🔄 重新初始化知识图谱"):
-            with st.spinner("正在重新导入数据..."):
-                if init_neo4j_data(conn, json_data):
-                    st.success("✅ 知识图谱数据已重新初始化")
-                else:
-                    st.error("❌ 初始化失败")
+        st.markdown("### 📥 数据下载")
+        
+        # 下载全部学生访问记录
+        if len(df) > 0:
+            # 准备下载数据
+            download_df = df[["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
+            download_df.columns = ["学号/姓名", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "访问时间"]
+            
+            csv_data = download_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="📊 下载全部访问记录 (CSV)",
+                data=csv_data,
+                file_name=f"学生访问记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # 下载选定学生的记录
+            if selected_student:
+                student_download_df = df[df["student_id"] == selected_student][["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
+                student_download_df.columns = ["学号/姓名", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "访问时间"]
+                
+                student_csv = student_download_df.to_csv(index=False, encoding='utf-8-sig')
+                
+                st.download_button(
+                    label=f"📋 下载 {selected_student} 的记录 (CSV)",
+                    data=student_csv,
+                    file_name=f"学生_{selected_student}_访问记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+        else:
+            st.info("暂无数据可下载")
     
     with col2:
-        if st.button("🗑️ 清除所有访问记录", type="secondary"):
-            if conn.driver:
-                conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
-                st.success("✅ 访问记录已清除")
-                st.rerun()
-    
-    with col3:
-        if st.button("🆕 新建数据仓库", type="primary"):
-            st.warning("⚠️ 此操作将清除所有现有数据！")
-            if st.checkbox("我确认要清除所有数据并创建新仓库"):
+        st.markdown("### 🗑️ 数据清除")
+        
+        st.warning("⚠️ 清除操作不可恢复，请谨慎操作！")
+        
+        confirm_clear = st.checkbox("我确认要清除所有学生学习数据")
+        
+        if confirm_clear:
+            if st.button("🗑️ 清除所有学习数据", type="primary", use_container_width=True):
                 with st.spinner("正在清除数据..."):
-                    # 清除Neo4j数据
-                    if clear_all_data(conn):
-                        st.success("✅ Neo4j数据已清除")
+                    cleared = False
                     
-                    # 清除本地文件
-                    if clear_local_files():
-                        st.success("✅ 本地文件已清除")
+                    # 清除Neo4j中的交互记录
+                    if conn.driver:
+                        try:
+                            conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
+                            cleared = True
+                        except:
+                            pass
                     
-                    # 创建新的空白数据仓库
-                    new_data = create_new_data_warehouse()
-                    if save_json_data(new_data):
-                        st.success("✅ 新数据仓库已创建")
-                        st.info("📝 请编辑 JSON 文件来添加节点和关系")
+                    # 清除本地交互记录文件
+                    if os.path.exists(INTERACTIONS_FILE):
+                        try:
+                            os.remove(INTERACTIONS_FILE)
+                            cleared = True
+                        except:
+                            pass
+                    
+                    if cleared:
+                        st.success("✅ 所有学生学习数据已清除！")
                         st.rerun()
                     else:
-                        st.error("❌ 创建新数据仓库失败")
+                        st.error("❌ 清除失败，请重试")
+    
+    st.divider()
+    
+    # 数据来源说明
+    st.markdown("### 💡 数据存储说明")
+    st.info("""
+    **当前数据存储方式：本地文件 (interactions_log.json)**
+    
+    - ✅ 优点：无需额外配置数据库，简单易用
+    - ❌ 缺点：数据仅保存在本地，无法多设备同步
+    
+    **如需使用云端数据库（推荐用于生产环境）：**
+    1. 配置 Neo4j 云数据库（如 Neo4j Aura）
+    2. 修改代码中的 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD
+    3. 云端数据库支持多设备访问和数据持久化
+    """)
 
 # ==================== 主程序入口 ====================
 def main():
