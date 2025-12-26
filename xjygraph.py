@@ -13,8 +13,6 @@ from neo4j import GraphDatabase
 from pyvis.network import Network
 import streamlit.components.v1 as components
 import hashlib
-import time
-from streamlit_javascript import st_javascript
 
 # ==================== 配置区 ====================
 # 1. 专属标签 (通过修改这个后缀，区分不同的人)
@@ -456,52 +454,42 @@ def student_page(conn, json_data):
         st.markdown("---")
         st.markdown("💡 **提示**: 点击图谱节点查看详情")
         
-        # 同步数据按钮 - 将localStorage中的交互记录同步到服务器
+        # 处理从 URL 参数接收的交互记录
         if st.session_state.get("student_id"):
             st.markdown("---")
-            st.markdown("#### 📤 数据同步")
-            st.caption("浏览节点后，点击下方按钮保存记录")
             
-            if st.button("🔄 同步学习记录", use_container_width=True, type="primary"):
-                # 触发页面刷新来读取localStorage
-                st.session_state.sync_key = st.session_state.get('sync_key', 0) + 1
-                st.rerun()
+            # 检查 URL 参数中是否有待同步的交互数据
+            query_params = st.query_params
+            pending_node = query_params.get("record_node", None)
+            pending_label = query_params.get("record_label", None)
             
-            # 读取并处理localStorage中的交互记录
-            try:
-                interactions_js = st_javascript("""
-                    (function() {
-                        var interactions = localStorage.getItem('pending_interactions');
-                        if (interactions) {
-                            localStorage.removeItem('pending_interactions');
-                            return interactions;
-                        }
-                        return null;
-                    })()
-                """, key=f"read_interactions_{st.session_state.get('sync_key', 0)}")
-                
-                if interactions_js and interactions_js != "null" and interactions_js != None:
-                    import json as json_lib
-                    try:
-                        interactions_list = json_lib.loads(interactions_js)
-                        if interactions_list and len(interactions_list) > 0:
-                            synced_count = 0
-                            for interaction in interactions_list:
-                                record_interaction(
-                                    conn,
-                                    st.session_state.student_id,
-                                    interaction.get('node_id', ''),
-                                    interaction.get('node_label', ''),
-                                    'view',
-                                    0
-                                )
-                                synced_count += 1
-                            if synced_count > 0:
-                                st.success(f"✅ 已同步 {synced_count} 条记录!")
-                    except Exception as e:
-                        st.error(f"同步失败: {e}")
-            except Exception as e:
-                pass
+            if pending_node and pending_label:
+                # 记录交互
+                record_interaction(
+                    conn,
+                    st.session_state.student_id,
+                    pending_node,
+                    pending_label,
+                    'view',
+                    0
+                )
+                # 清除 URL 参数
+                st.query_params.clear()
+                st.success(f"✅ 已记录: {pending_label}")
+            
+            # 显示已记录的节点数量
+            if conn.driver:
+                try:
+                    result = conn.execute_query(f"""
+                        MATCH (i:Interaction_{TARGET_LABEL} {{student_id: $student_id}})
+                        RETURN count(i) as count
+                    """, {"student_id": st.session_state.student_id})
+                    if result and len(result) > 0:
+                        count = result[0].get('count', 0)
+                        if count > 0:
+                            st.info(f"📊 已浏览 {count} 个节点")
+                except:
+                    pass
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -750,21 +738,14 @@ def student_page(conn, json_data):
                         if (node) {{
                             showNodeDetail(node, nodeId);
                             highlightConnected(nodeId);                            
-                            // 记录交互到localStorage
+                            // 通过 URL 参数将点击记录发送到 Streamlit
                             try {{
-                                var pending = localStorage.getItem('pending_interactions');
-                                var interactions = pending ? JSON.parse(pending) : [];
-                                interactions.push({{
-                                    node_id: nodeId,
-                                    node_label: node.label || nodeId,
-                                    timestamp: new Date().toISOString()
-                                }});
-                                localStorage.setItem('pending_interactions', JSON.stringify(interactions));
-                                
-                                // 更新待同步计数提示
-                                updateSyncBadge(interactions.length);
+                                var nodeLabel = encodeURIComponent(node.label || nodeId);
+                                var currentUrl = window.parent.location.href.split('?')[0];
+                                var newUrl = currentUrl + '?record_node=' + encodeURIComponent(nodeId) + '&record_label=' + nodeLabel;
+                                window.parent.location.href = newUrl;
                             }} catch(e) {{
-                                console.log('Error saving interaction:', e);
+                                console.log('Error recording interaction:', e);
                             }}
                         }}
                     }} else {{
@@ -775,14 +756,6 @@ def student_page(conn, json_data):
             }} else if (attempts < maxAttempts) {{
                 setTimeout(tryBindEvents, 300);
             }}
-        }}
-        
-        // 更新同步提示
-        function updateSyncBadge(count) {{
-            // 尝试向父窗口发送消息，通知有待同步的数据
-            try {{
-                window.parent.postMessage({{type: 'pending_sync', count: count}}, '*');
-            }} catch(e) {{}}
         }}
         
         function showNodeDetail(node, nodeId) {{
