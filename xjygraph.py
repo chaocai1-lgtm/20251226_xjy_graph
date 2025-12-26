@@ -10,11 +10,11 @@ import os
 import pandas as pd
 from datetime import datetime
 from neo4j import GraphDatabase
-from pyvis.network import Network
 import streamlit.components.v1 as components
 import hashlib
 import time
 from streamlit_javascript import st_javascript
+from streamlit_agraph import agraph, Node, Edge, Config
 
 # ==================== 配置区 ====================
 # 1. 专属标签 (通过修改这个后缀，区分不同的人)
@@ -304,84 +304,65 @@ def load_json_data():
         return None
 
 # ==================== 创建知识图谱可视化 ====================
-def create_knowledge_graph(json_data, selected_node=None):
-    """创建交互式知识图谱"""
-    net = Network(height="800px", width="100%", bgcolor="#ffffff", font_color="#333333")
-    net.barnes_hut(gravity=-3000, central_gravity=0.3, spring_length=200)
+def create_agraph_data(json_data, selected_node=None):
+    """创建 streamlit-agraph 所需的节点和边数据"""
+    nodes = []
+    edges = []
     
     # 添加节点
     for node in json_data.get("nodes", []):
         color = CATEGORY_COLORS.get(node["category"], "#888888")
-        size = (40 - (node["level"] - 1) * 5) * 2  # 层级越高，节点越小，整体增加一倍
-        
-        # 如果是选中的节点，增加边框
-        border_width = 5 if selected_node == node["id"] else 2
-        
-        net.add_node(
-            node["id"],
-            label=node["label"],
-            color=color,
-            size=size,
-            title=node["label"] + " (" + node["category"] + ")",
-            borderWidth=border_width,
-            borderWidthSelected=5,
-            font={"size": 160, "color": "#222222", "face": "Microsoft YaHei, SimHei, sans-serif", "bold": True}
-        )
+        # 节点更小，最小10，最大22
+        size = max(10, min(22, 28 - (node["level"] - 1) * 3))
+        if selected_node == node["id"]:
+            nodes.append(Node(
+                id=node["id"],
+                label=node["label"],
+                size=size + 4,
+                color=color,
+                font={"size": 15, "color": "#222222"},
+                borderWidth=3,
+                borderWidthSelected=5,
+                shape="dot"
+            ))
+        else:
+            nodes.append(Node(
+                id=node["id"],
+                label=node["label"],
+                size=size,
+                color=color,
+                font={"size": 13, "color": "#222222"},
+                borderWidth=1,
+                shape="dot"
+            ))
     
     # 添加边
     for rel in json_data.get("relationships", []):
-        net.add_edge(
-            rel["source"],
-            rel["target"],
-            title=rel.get("type", "关联"),
+        edges.append(Edge(
+            source=rel["source"],
+            target=rel["target"],
             label=rel.get("type", ""),
             color="#999999",
-            width=1,
-            arrows={"to": {"enabled": True, "scaleFactor": 0.3}},
-            font={"size": 20, "color": "#555"}
-        )
+            width=1
+        ))
     
-    # 配置交互选项 - 稳定后禁用物理引擎，节点可自由拖动
-    net.set_options("""
-    {
-        "nodes": {
-            "font": {
-                "size": 20,
-                "face": "Microsoft YaHei, SimHei, sans-serif"
-            }
-        },
-        "edges": {
-            "smooth": false,
-            "width": 1,
-            "color": "#999999"
-        },
-        "interaction": {
-            "hover": true,
-            "navigationButtons": false,
-            "keyboard": true,
-            "dragNodes": true,
-            "dragView": true,
-            "zoomView": true
-        },
-        "physics": {
-            "enabled": true,
-            "barnesHut": {
-                "gravitationalConstant": -8000,
-                "centralGravity": 0.1,
-                "springLength": 300,
-                "springConstant": 0.01,
-                "avoidOverlap": 1
-            },
-            "stabilization": {
-                "enabled": true,
-                "iterations": 300,
-                "fit": true
-            }
-        }
-    }
-    """)
-    
-    return net
+    return nodes, edges
+
+def get_agraph_config():
+    """获取 agraph 配置"""
+    config = Config(
+        width="100%",
+        height=800,
+        directed=True,
+        physics=False,  # 禁用物理引擎，节点位置固定不变
+        hierarchical=True,  # 使用层级布局，避免交叠
+        nodeHighlightBehavior=True,
+        highlightColor="#F7A7A6",
+        collapsible=False,
+        node={'labelProperty': 'label'},
+        link={'labelProperty': 'label', 'renderLabel': True}
+    )
+    return config
 
 # ==================== 信息卡片组件 ====================
 def render_info_card(node_data):
@@ -435,9 +416,18 @@ def render_info_card(node_data):
 
 # ==================== 学生端页面 ====================
 def student_page(conn, json_data):
-    """学生端：浏览知识图谱"""
+    """学生端：浏览知识图谱（使用 streamlit-agraph 实现双向同步）"""
     
-    # ========== 左侧侧边栏：登录和节点详情 ==========
+    # 初始化 session_state
+    if "selected_node_id" not in st.session_state:
+        st.session_state.selected_node_id = None
+    
+    # 构建节点查找字典
+    nodes_dict = {node["id"]: node for node in json_data.get("nodes", [])}
+    node_labels = {node["id"]: node["label"] for node in json_data.get("nodes", [])}
+    label_to_id = {node["label"]: node["id"] for node in json_data.get("nodes", [])}
+    
+    # ========== 左侧侧边栏：登录和节点选择 ==========
     with st.sidebar:
         st.markdown("### 👤 学生登录")
         login_input = st.text_input("学号或姓名", value=st.session_state.get("login_input", ""), key="login_input_field")
@@ -454,7 +444,69 @@ def student_page(conn, json_data):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
         
         st.markdown("---")
-        st.markdown("💡 **提示**: 点击图谱中的节点，下方会显示详情卡片并自动记录学习轨迹")
+        
+        # ========== 节点选择下拉框（与图谱同步）==========
+        st.markdown("### 📍 节点选择")
+        
+        # 获取所有节点标签
+        node_options = ["-- 请选择节点 --"] + [node["label"] for node in json_data.get("nodes", [])]
+        
+        # 确定当前选中的索引
+        current_index = 0
+        if st.session_state.selected_node_id and st.session_state.selected_node_id in node_labels:
+            current_label = node_labels[st.session_state.selected_node_id]
+            if current_label in node_options:
+                current_index = node_options.index(current_label)
+        
+        # 下拉框选择
+        selected_label = st.selectbox(
+            "选择要查看的知识点",
+            options=node_options,
+            index=current_index,
+            key="node_selector"
+        )
+        
+        # 处理下拉框选择变化
+        if selected_label != "-- 请选择节点 --" and selected_label in label_to_id:
+            new_node_id = label_to_id[selected_label]
+            if new_node_id != st.session_state.selected_node_id:
+                st.session_state.selected_node_id = new_node_id
+                # 记录交互
+                if st.session_state.get("student_id"):
+                    record_interaction(
+                        conn,
+                        st.session_state.student_id,
+                        new_node_id,
+                        selected_label,
+                        'view',
+                        0
+                    )
+        
+        st.markdown("---")
+        
+        # ========== 显示选中节点详情 ==========
+        if st.session_state.selected_node_id and st.session_state.selected_node_id in nodes_dict:
+            node_data = nodes_dict[st.session_state.selected_node_id]
+            render_info_card(node_data)
+            
+            # 显示关联节点
+            st.markdown("#### 🔗 相关联系")
+            related_nodes = []
+            for rel in json_data.get("relationships", []):
+                if rel["source"] == st.session_state.selected_node_id:
+                    target_label = node_labels.get(rel["target"], rel["target"])
+                    related_nodes.append(f"➡️ **{rel.get('type', '关联')}** → {target_label}")
+                elif rel["target"] == st.session_state.selected_node_id:
+                    source_label = node_labels.get(rel["source"], rel["source"])
+                    related_nodes.append(f"⬅️ {source_label} **{rel.get('type', '关联')}** →")
+            
+            if related_nodes:
+                for rn in related_nodes:
+                    st.markdown(rn)
+            else:
+                st.info("暂无关联节点")
+        else:
+            st.info("💡 点击右侧图谱节点或使用上方下拉框选择节点查看详情")
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -464,7 +516,7 @@ def student_page(conn, json_data):
         st.info("💡 请在左侧输入学号和姓名登录")
         return
     
-    # 图例（小型，放右侧）
+    # 图例
     st.markdown("##### 📊 知识分类")
     legend_html = "<div style='display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;'>"
     for cat, color in CATEGORY_COLORS.items():
@@ -474,360 +526,92 @@ def student_page(conn, json_data):
     
     st.markdown("---")
     
-    # ========== 知识图谱（全宽显示）==========
-    st.markdown("### 🗺️ 知识图谱（点击节点查看详情并记录学习轨迹）")
+    # ========== 使用 streamlit-agraph 显示知识图谱 ==========
+    st.markdown("### 🗺️ 知识图谱（点击节点可在左侧查看详情）")
     
-    # 获取URL参数中的选中节点
-    query_params = st.query_params
-    url_selected = query_params.get("selected_node", None)
+    # 创建 agraph 数据
+    nodes, edges = create_agraph_data(json_data, st.session_state.selected_node_id)
+    config = get_agraph_config()
     
-    # 如果有选中节点，记录交互并显示卡片
-    selected_node_data = None
-    if url_selected:
-        # 查找节点数据
-        for node in json_data.get("nodes", []):
-            if node["id"] == url_selected:
-                selected_node_data = node
-                break
-        
-        # 记录交互
-        if selected_node_data:
-            record_interaction(
-                conn,
-                st.session_state.student_id,
-                url_selected,
-                selected_node_data.get("label", url_selected),
-                "view",
-                0
-            )
-            st.success(f"✅ 已记录访问: {selected_node_data.get('label', url_selected)}")
+    # 渲染图谱并获取点击的节点
+    clicked_node = agraph(nodes=nodes, edges=edges, config=config)
     
-    # 创建并显示图谱
-    net = create_knowledge_graph(json_data, url_selected)
+    # 处理图谱点击事件（双向同步的核心）
+    if clicked_node:
+        if clicked_node != st.session_state.selected_node_id:
+            st.session_state.selected_node_id = clicked_node
+            # 记录交互
+            if st.session_state.get("student_id") and clicked_node in node_labels:
+                record_interaction(
+                    conn,
+                    st.session_state.student_id,
+                    clicked_node,
+                    node_labels[clicked_node],
+                    'view',
+                    0
+                )
     
-    # 保存并显示HTML
-    graph_path = os.path.join(current_dir, "temp_graph.html")
-    net.save_graph(graph_path)
-    
-    # 读取并嵌入HTML
-    with open(graph_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-    
-    # 准备节点数据供 JavaScript 使用
-    nodes_data = {node["id"]: node for node in json_data.get("nodes", [])}
-    nodes_json = json.dumps(nodes_data, ensure_ascii=False)
-    
-    # 准备边的数据供高亮使用
-    edges_data = json_data.get("relationships", [])
-    edges_json = json.dumps(edges_data, ensure_ascii=False)
-    
-    # 注入点击事件处理 - 在图谱内直接显示节点详情（不刷新页面）
-    click_handler = f"""
-    <style>
-    #mynetwork {{
-        border: none !important;
-        outline: none !important;
-        box-shadow: none !important;
-    }}
-    #node-detail-panel {{
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        width: 380px;
-        max-height: 85vh;
-        background: rgba(255,255,255,0.95);
-        padding: 20px 25px;
-        z-index: 9999;
-        overflow-y: auto;
-        display: none;
-        font-family: 'Microsoft YaHei', sans-serif;
-        box-shadow: none !important;
-    }}
-    #node-detail-panel h3 {{
-        margin: 0 0 15px 0;
-        color: #1f77b4;
-        font-size: 22px;
-        padding-bottom: 10px;
-        border-bottom: 2px solid #1f77b4;
-    }}
-    #node-detail-panel .detail-row {{
-        margin: 12px 0;
-        font-size: 16px;
-        line-height: 1.8;
-    }}
-    #node-detail-panel .detail-label {{
-        font-weight: bold;
-        color: #333;
-    }}
-    #node-detail-panel .detail-value {{
-        color: #555;
-    }}
-    #node-detail-panel .close-btn {{
-        position: absolute;
-        top: 15px;
-        right: 20px;
-        cursor: pointer;
-        font-size: 24px;
-        color: #999;
-    }}
-    #node-detail-panel .close-btn:hover {{
-        color: #333;
-    }}
-    #node-detail-panel .relations-section {{
-        margin-top: 20px;
-        padding-top: 15px;
-        border-top: 1px solid #ddd;
-    }}
-    #node-detail-panel .relations-section h4 {{
-        margin: 0 0 10px 0;
-        color: #666;
-        font-size: 16px;
-    }}
-    #node-detail-panel .relation-item {{
-        margin: 6px 0;
-        font-size: 14px;
-        color: #555;
-    }}
-    </style>
-    
-    <div id="node-detail-panel">
-        <span class="close-btn" onclick="closeDetailPanel()">✕</span>
-        <h3 id="detail-title">节点详情</h3>
-        <div id="detail-content"></div>
-        <div id="relations-content"></div>
-    </div>
-    
-    <script>
-    var nodesData = {nodes_json};
-    var edgesData = {edges_json};
-    var originalColors = {{}};
-    var networkRef = null;
-    
-    function closeDetailPanel() {{
-        document.getElementById('node-detail-panel').style.display = 'none';
-        // 恢复所有节点和边的颜色
-        if (networkRef) {{
-            restoreAllColors();
-        }}
-    }}
-    
-    function restoreAllColors() {{
-        if (!networkRef) return;
-        var nodeUpdates = [];
-        var edgeUpdates = [];
-        
-        // 恢复节点颜色
-        for (var nodeId in originalColors.nodes) {{
-            nodeUpdates.push({{id: nodeId, color: originalColors.nodes[nodeId], font: {{color: '#222222'}}}});
-        }}
-        // 恢复边颜色
-        for (var edgeId in originalColors.edges) {{
-            edgeUpdates.push({{id: edgeId, color: '#999999', font: {{color: '#555'}}}});
-        }}
-        
-        if (nodeUpdates.length > 0) {{
-            networkRef.body.data.nodes.update(nodeUpdates);
-        }}
-        if (edgeUpdates.length > 0) {{
-            networkRef.body.data.edges.update(edgeUpdates);
-        }}
-        originalColors = {{nodes: {{}}, edges: {{}}}};
-    }}
-    
-    function highlightConnected(clickedNodeId) {{
-        if (!networkRef) return;
-        
-        // 先恢复之前的颜色
-        restoreAllColors();
-        
-        // 找出关联的节点和边
-        var connectedNodes = new Set([clickedNodeId]);
-        var connectedEdgeIds = new Set();
-        
-        var allEdges = networkRef.body.data.edges.get();
-        allEdges.forEach(function(edge) {{
-            if (edge.from === clickedNodeId || edge.to === clickedNodeId) {{
-                connectedNodes.add(edge.from);
-                connectedNodes.add(edge.to);
-                connectedEdgeIds.add(edge.id);
-            }}
-        }});
-        
-        // 保存原始颜色并设置新颜色
-        var allNodes = networkRef.body.data.nodes.get();
-        var nodeUpdates = [];
-        var edgeUpdates = [];
-        
-        originalColors = {{nodes: {{}}, edges: {{}}}};
-        
-        allNodes.forEach(function(node) {{
-            originalColors.nodes[node.id] = node.color;
-            if (connectedNodes.has(node.id)) {{
-                // 关联节点保持原色，可以加粗边框
-                nodeUpdates.push({{id: node.id, font: {{color: '#222222'}}}});
-            }} else {{
-                // 非关联节点变灰
-                nodeUpdates.push({{id: node.id, color: '#dddddd', font: {{color: '#bbbbbb'}}}});
-            }}
-        }});
-        
-        allEdges.forEach(function(edge) {{
-            originalColors.edges[edge.id] = edge.color;
-            if (connectedEdgeIds.has(edge.id)) {{
-                // 关联边高亮
-                edgeUpdates.push({{id: edge.id, color: '#1f77b4', font: {{color: '#1f77b4'}}}});
-            }} else {{
-                // 非关联边变灰
-                edgeUpdates.push({{id: edge.id, color: '#eeeeee', font: {{color: '#cccccc'}}}});
-            }}
-        }});
-        
-        networkRef.body.data.nodes.update(nodeUpdates);
-        networkRef.body.data.edges.update(edgeUpdates);
-    }}
-    
-    window.onload = function() {{
-        var attempts = 0;
-        var maxAttempts = 20;
-        
-        function tryBindEvents() {{
-            attempts++;
-            var networkObj = null;
-            
-            if (typeof network !== 'undefined') {{
-                networkObj = network;
-            }} else if (typeof window.network !== 'undefined') {{
-                networkObj = window.network;
-            }}
-            
-            if (networkObj) {{
-                networkRef = networkObj;
-                
-                // 稳定后禁用物理引擎
-                networkObj.on('stabilized', function() {{
-                    networkObj.setOptions({{physics: {{enabled: false}}}});
-                }});
-                
-                // 点击事件 - 显示节点详情并高亮关联内容
-                networkObj.on('click', function(params) {{
-                    if (params.nodes && params.nodes.length > 0) {{
-                        var nodeId = params.nodes[0];
-                        var node = nodesData[nodeId];
-                        if (node) {{
-                            showNodeDetail(node, nodeId);
-                            highlightConnected(nodeId);                            
-                            // 通过URL参数触发Streamlit刷新并记录
-                            var currentUrl = window.parent.location.href;
-                            var baseUrl = currentUrl.split('?')[0];
-                            var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
-                            window.parent.location.href = newUrl;
-                        }}
-                    }} else {{
-                        // 点击空白处关闭面板并恢复颜色
-                        closeDetailPanel();
-                    }}
-                }});
-            }} else if (attempts < maxAttempts) {{
-                setTimeout(tryBindEvents, 300);
-            }}
-        }}
-        
-        function showNodeDetail(node, nodeId) {{
-            var panel = document.getElementById('node-detail-panel');
-            var title = document.getElementById('detail-title');
-            var content = document.getElementById('detail-content');
-            var relationsContent = document.getElementById('relations-content');
-            
-            title.innerText = '📍 ' + (node.label || node.id);
-            
-            var html = '';
-            
-            // 显示所有属性
-            if (node.category) {{
-                html += '<div class="detail-row"><span class="detail-label">📂 类别：</span><span class="detail-value">' + node.category + '</span></div>';
-            }}
-            if (node.description) {{
-                html += '<div class="detail-row"><span class="detail-label">📝 描述：</span><span class="detail-value">' + node.description + '</span></div>';
-            }}
-            if (node.properties) {{
-                for (var key in node.properties) {{
-                    if (node.properties.hasOwnProperty(key)) {{
-                        var value = node.properties[key];
-                        if (value && value !== '') {{
-                            html += '<div class="detail-row"><span class="detail-label">🔹 ' + key + '：</span><span class="detail-value">' + value + '</span></div>';
-                        }}
-                    }}
-                }}
-            }}
-            
-            // 如果没有任何属性，显示基本信息
-            if (html === '') {{
-                html = '<div class="detail-row"><span class="detail-label">ID：</span><span class="detail-value">' + node.id + '</span></div>';
-                if (node.label) {{
-                    html += '<div class="detail-row"><span class="detail-label">名称：</span><span class="detail-value">' + node.label + '</span></div>';
-                }}
-            }}
-            
-            content.innerHTML = html;
-            
-            // 显示关联关系
-            var relHtml = '<div class="relations-section"><h4>🔗 相关联系</h4>';
-            var hasRelations = false;
-            edgesData.forEach(function(edge) {{
-                if (edge.source === nodeId) {{
-                    var targetNode = nodesData[edge.target];
-                    var targetLabel = targetNode ? targetNode.label : edge.target;
-                    relHtml += '<div class="relation-item">➡️ <strong>' + (edge.type || '关联') + '</strong> → ' + targetLabel + '</div>';
-                    hasRelations = true;
-                }} else if (edge.target === nodeId) {{
-                    var sourceNode = nodesData[edge.source];
-                    var sourceLabel = sourceNode ? sourceNode.label : edge.source;
-                    relHtml += '<div class="relation-item">⬅️ ' + sourceLabel + ' <strong>' + (edge.type || '关联') + '</strong> →</div>';
-                    hasRelations = true;
-                }}
-            }});
-            relHtml += '</div>';
-            
-            relationsContent.innerHTML = hasRelations ? relHtml : '';
-            panel.style.display = 'block';
-        }}
-        
-        setTimeout(tryBindEvents, 500);
-    }};
-    </script>
-    """
-    html_content = html_content.replace("</body>", click_handler + "</body>")
-    
-    components.html(html_content, height=700, scrolling=True)
-    
-    # ========== 在图谱下方显示选中节点的详情卡片 ==========
-    if selected_node_data:
+    # ========== 在图谱下方显示选中节点详情（不刷新页面） ==========
+    if st.session_state.selected_node_id and st.session_state.selected_node_id in nodes_dict:
         st.markdown("---")
-        st.markdown("### 📋 节点详情")
-        render_info_card(selected_node_data)
+        st.markdown("### 📌 节点详情")
         
-        # 显示关联关系
-        st.markdown("#### 🔗 相关联系")
-        relationships = json_data.get("relationships", [])
-        has_relations = False
-        for rel in relationships:
-            if rel["source"] == url_selected:
-                target_node = next((n for n in json_data.get("nodes", []) if n["id"] == rel["target"]), None)
-                target_label = target_node["label"] if target_node else rel["target"]
-                st.markdown(f"➡️ **{rel.get('type', '关联')}** → {target_label}")
-                has_relations = True
-            elif rel["target"] == url_selected:
-                source_node = next((n for n in json_data.get("nodes", []) if n["id"] == rel["source"]), None)
-                source_label = source_node["label"] if source_node else rel["source"]
-                st.markdown(f"⬅️ {source_label} **{rel.get('type', '关联')}** →")
-                has_relations = True
-        if not has_relations:
-            st.info("暂无关联关系")
+        node_data = nodes_dict[st.session_state.selected_node_id]
+        color = CATEGORY_COLORS.get(node_data["category"], "#888888")
         
-        # 清除选择按钮
-        if st.button("🔄 清除选择", key="clear_selection"):
-            st.query_params.clear()
-            st.rerun()
+        # 使用列布局显示详情
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            st.markdown(f"""
+            <div style='
+                background: #ffffff;
+                border-left: 4px solid {color};
+                border-radius: 12px;
+                padding: 20px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            '>
+                <h3 style='color: {color}; margin-bottom: 10px;'>📍 {node_data["label"]}</h3>
+                <div style='display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;'>
+                    <span style='background: {color}22; color: {color}; padding: 4px 10px; border-radius: 15px; font-size: 12px;'>
+                        {node_data["category"]}
+                    </span>
+                    <span style='background: #f0f0f0; color: #666; padding: 4px 10px; border-radius: 15px; font-size: 12px;'>
+                        {node_data["type"]}
+                    </span>
+                    <span style='background: #f0f0f0; color: #666; padding: 4px 10px; border-radius: 15px; font-size: 12px;'>
+                        层级 {node_data["level"]}
+                    </span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # 属性详情
+            properties = node_data.get("properties", {})
+            if properties:
+                for key, value in properties.items():
+                    st.markdown(f"""
+                    <div style='
+                        background: #f8f9fa;
+                        border-radius: 8px;
+                        padding: 10px 12px;
+                        margin: 6px 0;
+                        border-left: 3px solid {color};
+                    '>
+                        <span style='color: {color}; font-weight: bold; font-size: 13px;'>{key}</span>
+                        <p style='color: #333; margin: 4px 0 0 0; font-size: 13px; line-height: 1.5;'>{value}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("#### 🔗 相关联系")
+            for rel in json_data.get("relationships", []):
+                if rel["source"] == st.session_state.selected_node_id:
+                    target_label = node_labels.get(rel["target"], rel["target"])
+                    st.markdown(f"➡️ **{rel.get('type', '关联')}** → {target_label}")
+                elif rel["target"] == st.session_state.selected_node_id:
+                    source_label = node_labels.get(rel["source"], rel["source"])
+                    st.markdown(f"⬅️ {source_label} **{rel.get('type', '关联')}** →")
 
 # ==================== 管理端页面 ====================
 def admin_page(conn, json_data):
@@ -981,43 +765,110 @@ def admin_page(conn, json_data):
     # 数据管理
     st.markdown("## ⚙️ 数据管理")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2 = st.columns(2)
+    
     with col1:
-        if st.button("🔄 重新初始化知识图谱"):
-            with st.spinner("正在重新导入数据..."):
-                if init_neo4j_data(conn, json_data):
-                    st.success("✅ 知识图谱数据已重新初始化")
-                else:
-                    st.error("❌ 初始化失败")
+        st.markdown("### 📥 数据下载")
+        
+        # 下载所有访问记录
+        if len(df) > 0:
+            # 准备下载数据
+            download_df = df[["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
+            download_df.columns = ["学号", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "时间"]
+            
+            csv_data = download_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="📊 下载全部访问记录 (CSV)",
+                data=csv_data,
+                file_name=f"学生访问记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # 下载学生汇总数据
+            summary_df = df.groupby("student_id").agg({
+                "node_id": "nunique",
+                "node_label": "count",
+                "duration": "sum"
+            }).reset_index()
+            summary_df.columns = ["学号", "访问节点数", "总访问次数", "总学习时长(秒)"]
+            
+            summary_csv = summary_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="👥 下载学生汇总数据 (CSV)",
+                data=summary_csv,
+                file_name=f"学生学习汇总_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # 下载节点热度数据
+            node_heat_df = df.groupby(["node_id", "node_label"]).size().reset_index(name="访问次数")
+            node_heat_df = node_heat_df.sort_values("访问次数", ascending=False)
+            node_heat_df.columns = ["节点ID", "节点名称", "访问次数"]
+            
+            heat_csv = node_heat_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="🔥 下载节点热度数据 (CSV)",
+                data=heat_csv,
+                file_name=f"节点热度统计_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        else:
+            st.info("暂无数据可下载")
     
     with col2:
-        if st.button("🗑️ 清除所有访问记录", type="secondary"):
-            if conn.driver:
-                conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
-                st.success("✅ 访问记录已清除")
-                st.rerun()
+        st.markdown("### 🗑️ 数据清理")
+        
+        st.warning("⚠️ 清除操作不可恢复，请谨慎操作！")
+        
+        # 使用确认机制
+        confirm_clear = st.checkbox("我确认要清除所有学生学习数据")
+        
+        if st.button("🗑️ 清除所有学习数据", type="secondary", disabled=not confirm_clear, use_container_width=True):
+            with st.spinner("正在清除数据..."):
+                cleared = False
+                
+                # 清除Neo4j中的交互记录
+                if conn.driver:
+                    try:
+                        conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
+                        cleared = True
+                    except Exception as e:
+                        st.error(f"清除Neo4j数据失败: {e}")
+                
+                # 清除本地交互记录文件
+                try:
+                    if os.path.exists(INTERACTIONS_FILE):
+                        with open(INTERACTIONS_FILE, 'w', encoding='utf-8') as f:
+                            json.dump([], f)
+                        cleared = True
+                except Exception as e:
+                    st.error(f"清除本地文件失败: {e}")
+                
+                if cleared:
+                    st.success("✅ 所有学生学习数据已清除！")
+                    st.rerun()
     
-    with col3:
-        if st.button("🆕 新建数据仓库", type="primary"):
-            st.warning("⚠️ 此操作将清除所有现有数据！")
-            if st.checkbox("我确认要清除所有数据并创建新仓库"):
-                with st.spinner("正在清除数据..."):
-                    # 清除Neo4j数据
-                    if clear_all_data(conn):
-                        st.success("✅ Neo4j数据已清除")
-                    
-                    # 清除本地文件
-                    if clear_local_files():
-                        st.success("✅ 本地文件已清除")
-                    
-                    # 创建新的空白数据仓库
-                    new_data = create_new_data_warehouse()
-                    if save_json_data(new_data):
-                        st.success("✅ 新数据仓库已创建")
-                        st.info("📝 请编辑 JSON 文件来添加节点和关系")
-                        st.rerun()
-                    else:
-                        st.error("❌ 创建新数据仓库失败")
+    st.divider()
+    
+    # 数据来源说明
+    st.markdown("### 💾 数据存储说明")
+    st.info("""
+    **当前数据存储方式：本地文件 (interactions_log.json)**
+    
+    - ✅ 优点：无需额外配置，开箱即用
+    - ❌ 缺点：数据存储在服务器本地，多实例部署时数据不同步
+    
+    **如需使用云端数据库（推荐用于生产环境）：**
+    1. 配置 Neo4j 云数据库（如 Neo4j Aura）
+    2. 修改代码中的 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD
+    3. 云端数据库优势：数据持久化、多端同步、更安全
+    """)
 
 # ==================== 主程序入口 ====================
 def main():
