@@ -435,6 +435,33 @@ def render_info_card(node_data):
 def student_page(conn, json_data):
     """学生端：浏览知识图谱"""
     
+    # ========== 首先处理 URL 参数中的交互记录（在其他一切之前）==========
+    query_params = st.query_params
+    sync_data = query_params.get("sync_data", None)
+    
+    if sync_data and st.session_state.get("student_id"):
+        try:
+            import urllib.parse
+            decoded_data = urllib.parse.unquote(sync_data)
+            # 格式: node1|label1,node2|label2,...
+            pairs = decoded_data.split(",")
+            synced = 0
+            for pair in pairs:
+                if "|" in pair:
+                    parts = pair.split("|")
+                    if len(parts) >= 2:
+                        node_id = urllib.parse.unquote(parts[0])
+                        node_label = urllib.parse.unquote(parts[1])
+                        record_interaction(conn, st.session_state.student_id, node_id, node_label, 'view', 0)
+                        synced += 1
+            if synced > 0:
+                st.toast(f"✅ 已保存 {synced} 条记录", icon="✅")
+        except Exception as e:
+            st.toast(f"保存失败: {e}", icon="❌")
+        finally:
+            # 清除 URL 参数（不触发 rerun）
+            st.query_params.clear()
+    
     # ========== 左侧侧边栏：登录和节点详情 ==========
     with st.sidebar:
         st.markdown("### 👤 学生登录")
@@ -450,44 +477,6 @@ def student_page(conn, json_data):
         
         if st.session_state.get("student_id"):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
-        
-        st.markdown("---")
-        st.markdown("💡 **提示**: 点击图谱节点查看详情")
-        
-        # 处理从 URL 参数接收的交互记录
-        if st.session_state.get("student_id"):
-            st.markdown("---")
-            
-            # 检查 URL 参数中是否有待同步的交互数据
-            query_params = st.query_params
-            pending_data = query_params.get("sync_data", None)
-            
-            if pending_data:
-                try:
-                    import urllib.parse
-                    decoded_data = urllib.parse.unquote(pending_data)
-                    # 格式: node1|label1,node2|label2,...
-                    pairs = decoded_data.split(",")
-                    synced = 0
-                    for pair in pairs:
-                        if "|" in pair:
-                            parts = pair.split("|")
-                            if len(parts) >= 2:
-                                record_interaction(
-                                    conn,
-                                    st.session_state.student_id,
-                                    parts[0],
-                                    parts[1],
-                                    'view',
-                                    0
-                                )
-                                synced += 1
-                    # 清除 URL 参数
-                    st.query_params.clear()
-                    if synced > 0:
-                        st.success(f"✅ 已保存 {synced} 条浏览记录!")
-                except Exception as e:
-                    st.error(f"同步失败: {e}")
             
             # 显示已记录的节点数量
             if conn.driver:
@@ -499,9 +488,12 @@ def student_page(conn, json_data):
                     if result and len(result) > 0:
                         count = result[0].get('count', 0)
                         if count > 0:
-                            st.info(f"📊 已保存 {count} 条浏览记录")
+                            st.caption(f"📊 已浏览 {count} 个节点")
                 except:
                     pass
+        
+        st.markdown("---")
+        st.markdown("💡 **提示**: 点击图谱节点查看详情")
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -631,29 +623,13 @@ def student_page(conn, json_data):
         <div id="relations-content"></div>
     </div>
     
-    <!-- 保存记录按钮 -->
-    <div id="save-btn-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:none;">
-        <button id="save-records-btn" onclick="saveRecords()" style="
-            background: linear-gradient(90deg, #4ECDC4 0%, #45B7D1 100%);
-            color: white;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
-            font-size: 16px;
-            cursor: pointer;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            font-family: 'Microsoft YaHei', sans-serif;
-        ">
-            💾 保存浏览记录 (<span id="record-count">0</span>)
-        </button>
-    </div>
-    
     <script>
     var nodesData = {nodes_json};
     var edgesData = {edges_json};
     var originalColors = {{}};
     var networkRef = null;
     var clickedNodes = [];  // 记录已点击的节点
+    var saveTimer = null;   // 自动保存定时器
     
     function closeDetailPanel() {{
         document.getElementById('node-detail-panel').style.display = 'none';
@@ -776,7 +752,10 @@ def student_page(conn, json_data):
                                     id: nodeId,
                                     label: node.label || nodeId
                                 }});
-                                updateSaveButton();
+                                
+                                // 重置定时器，用户停止点击3秒后自动保存
+                                if (saveTimer) clearTimeout(saveTimer);
+                                saveTimer = setTimeout(autoSaveRecords, 3000);
                             }}
                         }}
                     }} else {{
@@ -789,20 +768,8 @@ def student_page(conn, json_data):
             }}
         }}
         
-        // 更新保存按钮显示
-        function updateSaveButton() {{
-            var container = document.getElementById('save-btn-container');
-            var countSpan = document.getElementById('record-count');
-            if (clickedNodes.length > 0) {{
-                container.style.display = 'block';
-                countSpan.innerText = clickedNodes.length;
-            }} else {{
-                container.style.display = 'none';
-            }}
-        }}
-        
-        // 保存记录到服务器
-        function saveRecords() {{
+        // 自动保存记录到服务器
+        function autoSaveRecords() {{
             if (clickedNodes.length === 0) return;
             
             try {{
@@ -815,7 +782,9 @@ def student_page(conn, json_data):
                 var newUrl = currentUrl + '?sync_data=' + encodeURIComponent(dataStr);
                 window.parent.location.href = newUrl;
             }} catch(e) {{
-                alert('保存失败，请刷新页面重试');
+                console.log('Auto save failed:', e);
+            }}
+        }}
                 console.log('Error saving records:', e);
             }}
         }}
