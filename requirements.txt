@@ -3,4 +3,3 @@ neo4j>=5.0.0
 pyvis>=0.3.2
 pandas>=2.0.0
 streamlit-javascript
-streamlit-agraph>=0.0.45
