@@ -461,51 +461,9 @@ def student_page(conn, json_data):
         
         if st.session_state.get("student_id"):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
-            
-            # 节点快速选择（用于可靠地记录访问）
-            st.markdown("---")
-            st.markdown("📌 **快速访问节点**")
-            
-            # 创建节点选项列表
-            nodes = json_data.get("nodes", [])
-            node_options = ["请选择节点..."] + [f"{n.get('label', n['id'])} ({n.get('category', '未分类')})" for n in nodes]
-            node_ids = [""] + [n["id"] for n in nodes]
-            
-            selected_idx = st.selectbox(
-                "选择要学习的节点：",
-                range(len(node_options)),
-                format_func=lambda x: node_options[x],
-                key="node_selector"
-            )
-            
-            if selected_idx > 0:
-                selected_node_id = node_ids[selected_idx]
-                selected_node = nodes[selected_idx - 1]
-                
-                # 记录访问
-                last_selected = st.session_state.get("last_sidebar_selection", "")
-                if last_selected != selected_node_id:
-                    record_interaction(
-                        conn,
-                        st.session_state.student_id,
-                        selected_node_id,
-                        selected_node.get("label", selected_node_id),
-                        'view',
-                        0
-                    )
-                    st.session_state.last_sidebar_selection = selected_node_id
-                
-                # 显示选中节点的详情
-                color = CATEGORY_COLORS.get(selected_node.get("category", ""), "#666")
-                st.markdown(f"""
-                <div style='background:{color}22;border-left:4px solid {color};padding:10px;border-radius:5px;margin-top:10px;'>
-                    <strong style='color:{color};'>{selected_node.get('label', '')}</strong>
-                    <p style='margin:5px 0 0 0;font-size:12px;color:#555;'>{selected_node.get('description', '暂无描述')[:100]}...</p>
-                </div>
-                """, unsafe_allow_html=True)
         
         st.markdown("---")
-        st.markdown("💡 **提示**: 点击右侧图谱中的节点或从上方列表选择")
+        st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -775,13 +733,12 @@ def student_page(conn, json_data):
                             showNodeDetail(node, nodeId);
                             highlightConnected(nodeId);
                             
-                            // 通知父窗口更新URL参数，触发Streamlit记录
+                            // 更新父窗口URL并刷新页面，触发Streamlit记录访问
                             try {{
                                 var baseUrl = window.parent.location.href.split('?')[0];
                                 var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
-                                window.parent.history.pushState({{}}, '', newUrl);
-                                // 触发Streamlit刷新
-                                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: nodeId}}, '*');
+                                // 使用 location.href 触发页面刷新
+                                window.parent.location.href = newUrl;
                             }} catch(e) {{
                                 console.log('Cannot update parent URL:', e);
                             }}
