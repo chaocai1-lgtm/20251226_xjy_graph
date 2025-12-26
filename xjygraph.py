@@ -1,4 +1,4 @@
-"""
+﻿"""
 范各庄矿突水事故知识图谱系统
 基于 Streamlit（前端）与 Neo4j（后端）构建
 功能：学生端浏览知识图谱，管理端查看访问数据
@@ -454,38 +454,7 @@ def student_page(conn, json_data):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
         
         st.markdown("---")
-        st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
-        
-        # 读取并处理localStorage中的交互记录
-        if st.session_state.get("student_id"):
-            try:
-                interactions_js = st_javascript("""
-                    var interactions = localStorage.getItem('pending_interactions');
-                    if (interactions) {
-                        localStorage.removeItem('pending_interactions');
-                        interactions;
-                    } else {
-                        null;
-                    }
-                """, key=f"read_interactions_{int(time.time())}")
-                
-                if interactions_js:
-                    import json as json_lib
-                    try:
-                        interactions_list = json_lib.loads(interactions_js)
-                        for interaction in interactions_list:
-                            record_interaction(
-                                conn,
-                                st.session_state.student_id,
-                                interaction.get('node_id', ''),
-                                interaction.get('node_label', ''),
-                                'view',
-                                0
-                            )
-                    except:
-                        pass
-            except:
-                pass
+        st.markdown("💡 **提示**: 点击图谱中的节点，下方会显示详情卡片并自动记录学习轨迹")
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -506,11 +475,32 @@ def student_page(conn, json_data):
     st.markdown("---")
     
     # ========== 知识图谱（全宽显示）==========
-    st.markdown("### 🗺️ 知识图谱（点击节点可在左侧查看详情）")
+    st.markdown("### 🗺️ 知识图谱（点击节点查看详情并记录学习轨迹）")
     
-    # 获取URL参数中的选中节点，用于高亮显示
+    # 获取URL参数中的选中节点
     query_params = st.query_params
     url_selected = query_params.get("selected_node", None)
+    
+    # 如果有选中节点，记录交互并显示卡片
+    selected_node_data = None
+    if url_selected:
+        # 查找节点数据
+        for node in json_data.get("nodes", []):
+            if node["id"] == url_selected:
+                selected_node_data = node
+                break
+        
+        # 记录交互
+        if selected_node_data:
+            record_interaction(
+                conn,
+                st.session_state.student_id,
+                url_selected,
+                selected_node_data.get("label", url_selected),
+                "view",
+                0
+            )
+            st.success(f"✅ 已记录访问: {selected_node_data.get('label', url_selected)}")
     
     # 创建并显示图谱
     net = create_knowledge_graph(json_data, url_selected)
@@ -726,17 +716,12 @@ def student_page(conn, json_data):
                         if (node) {{
                             showNodeDetail(node, nodeId);
                             highlightConnected(nodeId);                            
-                            // 记录交互到localStorage
-                            try {{
-                                var pending = localStorage.getItem('pending_interactions');
-                                var interactions = pending ? JSON.parse(pending) : [];
-                                interactions.push({{
-                                    node_id: nodeId,
-                                    node_label: node.label || nodeId,
-                                    timestamp: new Date().toISOString()
-                                }});
-                                localStorage.setItem('pending_interactions', JSON.stringify(interactions));
-                            }} catch(e) {{}}                        }}
+                            // 通过URL参数触发Streamlit刷新并记录
+                            var currentUrl = window.parent.location.href;
+                            var baseUrl = currentUrl.split('?')[0];
+                            var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
+                            window.parent.location.href = newUrl;
+                        }}
                     }} else {{
                         // 点击空白处关闭面板并恢复颜色
                         closeDetailPanel();
@@ -814,6 +799,35 @@ def student_page(conn, json_data):
     html_content = html_content.replace("</body>", click_handler + "</body>")
     
     components.html(html_content, height=700, scrolling=True)
+    
+    # ========== 在图谱下方显示选中节点的详情卡片 ==========
+    if selected_node_data:
+        st.markdown("---")
+        st.markdown("### 📋 节点详情")
+        render_info_card(selected_node_data)
+        
+        # 显示关联关系
+        st.markdown("#### 🔗 相关联系")
+        relationships = json_data.get("relationships", [])
+        has_relations = False
+        for rel in relationships:
+            if rel["source"] == url_selected:
+                target_node = next((n for n in json_data.get("nodes", []) if n["id"] == rel["target"]), None)
+                target_label = target_node["label"] if target_node else rel["target"]
+                st.markdown(f"➡️ **{rel.get('type', '关联')}** → {target_label}")
+                has_relations = True
+            elif rel["target"] == url_selected:
+                source_node = next((n for n in json_data.get("nodes", []) if n["id"] == rel["source"]), None)
+                source_label = source_node["label"] if source_node else rel["source"]
+                st.markdown(f"⬅️ {source_label} **{rel.get('type', '关联')}** →")
+                has_relations = True
+        if not has_relations:
+            st.info("暂无关联关系")
+        
+        # 清除选择按钮
+        if st.button("🔄 清除选择", key="clear_selection"):
+            st.query_params.clear()
+            st.rerun()
 
 # ==================== 管理端页面 ====================
 def admin_page(conn, json_data):
