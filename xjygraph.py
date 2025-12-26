@@ -1,4 +1,4 @@
-"""
+﻿"""
 范各庄矿突水事故知识图谱系统
 基于 Streamlit（前端）与 Neo4j（后端）构建
 功能：学生端浏览知识图谱，管理端查看访问数据
@@ -980,11 +980,11 @@ def admin_page(conn, json_data):
     with col1:
         st.markdown("### 📥 数据下载")
         
-        # 下载全部学生访问记录
+        # 下载所有访问记录
         if len(df) > 0:
             # 准备下载数据
             download_df = df[["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
-            download_df.columns = ["学号/姓名", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "访问时间"]
+            download_df.columns = ["学号", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "时间"]
             
             csv_data = download_df.to_csv(index=False, encoding='utf-8-sig')
             
@@ -996,71 +996,88 @@ def admin_page(conn, json_data):
                 use_container_width=True
             )
             
-            # 下载选定学生的记录
-            if selected_student:
-                student_download_df = df[df["student_id"] == selected_student][["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
-                student_download_df.columns = ["学号/姓名", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "访问时间"]
-                
-                student_csv = student_download_df.to_csv(index=False, encoding='utf-8-sig')
-                
-                st.download_button(
-                    label=f"📋 下载 {selected_student} 的记录 (CSV)",
-                    data=student_csv,
-                    file_name=f"学生_{selected_student}_访问记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv",
-                    use_container_width=True
-                )
+            # 下载学生汇总数据
+            summary_df = df.groupby("student_id").agg({
+                "node_id": "nunique",
+                "node_label": "count",
+                "duration": "sum"
+            }).reset_index()
+            summary_df.columns = ["学号", "访问节点数", "总访问次数", "总学习时长(秒)"]
+            
+            summary_csv = summary_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="👥 下载学生汇总数据 (CSV)",
+                data=summary_csv,
+                file_name=f"学生学习汇总_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+            
+            # 下载节点热度数据
+            node_heat_df = df.groupby(["node_id", "node_label"]).size().reset_index(name="访问次数")
+            node_heat_df = node_heat_df.sort_values("访问次数", ascending=False)
+            node_heat_df.columns = ["节点ID", "节点名称", "访问次数"]
+            
+            heat_csv = node_heat_df.to_csv(index=False, encoding='utf-8-sig')
+            
+            st.download_button(
+                label="🔥 下载节点热度数据 (CSV)",
+                data=heat_csv,
+                file_name=f"节点热度统计_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
         else:
             st.info("暂无数据可下载")
     
     with col2:
-        st.markdown("### 🗑️ 数据清除")
+        st.markdown("### 🗑️ 数据清理")
         
         st.warning("⚠️ 清除操作不可恢复，请谨慎操作！")
         
+        # 使用确认机制
         confirm_clear = st.checkbox("我确认要清除所有学生学习数据")
         
-        if confirm_clear:
-            if st.button("🗑️ 清除所有学习数据", type="primary", use_container_width=True):
-                with st.spinner("正在清除数据..."):
-                    cleared = False
-                    
-                    # 清除Neo4j中的交互记录
-                    if conn.driver:
-                        try:
-                            conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
-                            cleared = True
-                        except:
-                            pass
-                    
-                    # 清除本地交互记录文件
+        if st.button("🗑️ 清除所有学习数据", type="secondary", disabled=not confirm_clear, use_container_width=True):
+            with st.spinner("正在清除数据..."):
+                cleared = False
+                
+                # 清除Neo4j中的交互记录
+                if conn.driver:
+                    try:
+                        conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
+                        cleared = True
+                    except Exception as e:
+                        st.error(f"清除Neo4j数据失败: {e}")
+                
+                # 清除本地交互记录文件
+                try:
                     if os.path.exists(INTERACTIONS_FILE):
-                        try:
-                            os.remove(INTERACTIONS_FILE)
-                            cleared = True
-                        except:
-                            pass
-                    
-                    if cleared:
-                        st.success("✅ 所有学生学习数据已清除！")
-                        st.rerun()
-                    else:
-                        st.error("❌ 清除失败，请重试")
+                        with open(INTERACTIONS_FILE, 'w', encoding='utf-8') as f:
+                            json.dump([], f)
+                        cleared = True
+                except Exception as e:
+                    st.error(f"清除本地文件失败: {e}")
+                
+                if cleared:
+                    st.success("✅ 所有学生学习数据已清除！")
+                    st.rerun()
     
     st.divider()
     
     # 数据来源说明
-    st.markdown("### 💡 数据存储说明")
+    st.markdown("### 💾 数据存储说明")
     st.info("""
     **当前数据存储方式：本地文件 (interactions_log.json)**
     
-    - ✅ 优点：无需额外配置数据库，简单易用
-    - ❌ 缺点：数据仅保存在本地，无法多设备同步
+    - ✅ 优点：无需额外配置，开箱即用
+    - ❌ 缺点：数据存储在服务器本地，多实例部署时数据不同步
     
     **如需使用云端数据库（推荐用于生产环境）：**
     1. 配置 Neo4j 云数据库（如 Neo4j Aura）
     2. 修改代码中的 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD
-    3. 云端数据库支持多设备访问和数据持久化
+    3. 云端数据库优势：数据持久化、多端同步、更安全
     """)
 
 # ==================== 主程序入口 ====================
