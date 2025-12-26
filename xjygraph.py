@@ -841,30 +841,50 @@ def admin_page(conn, json_data):
     st.caption(f"共获取到 {len(interactions)} 条记录")
     
     if not interactions:
-        st.warning("暂无学生访问数据。请先在学生端浏览知识图谱，数据会自动记录。")
+        st.info("📭 暂无学生访问数据")
         
-        # 显示本地文件状态
-        if os.path.exists(INTERACTIONS_FILE):
-            st.info(f"✅ 本地记录文件存在: {INTERACTIONS_FILE}")
-            try:
-                with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
-                    local_data = json.load(f)
-                    st.write(f"本地文件中有 {len(local_data)} 条记录")
-                    if local_data:
-                        st.dataframe(pd.DataFrame(local_data), use_container_width=True)
-            except Exception as e:
-                st.error(f"读取本地文件失败: {e}")
-        else:
-            st.warning(f"❌ 本地记录文件不存在: {INTERACTIONS_FILE}")
+        st.markdown("""
+        ### 📝 如何开始收集数据？
         
-        # 提供初始化数据选项
-        if conn.driver and st.button("🔄 初始化知识图谱数据到Neo4j"):
-            with st.spinner("正在导入数据..."):
-                if init_neo4j_data(conn, json_data):
-                    init_interaction_table(conn)
-                    st.success("✅ 数据初始化成功！")
-                else:
-                    st.error("❌ 数据初始化失败")
+        1. **学生端操作**：
+           - 切换到"🎓 学生端"页面
+           - 输入学号或姓名登录
+           - 点击知识图谱中的节点进行浏览
+           - 数据会自动记录
+        
+        2. **数据存储位置**：
+           - **云端数据库**：已配置 Neo4j Aura（推荐），数据持久化保存
+           - **本地备份**：同时保存到 `interactions_log.json`（应用重启后可能丢失）
+        
+        3. **数据收集后**：
+           - 返回此页面查看完整的学习数据分析
+           - 可下载 CSV 格式的访问记录
+        """)
+        
+        # 仅在开发环境显示技术信息
+        with st.expander("🔧 技术信息（开发调试用）"):
+            st.caption("**数据存储状态**")
+            if conn.driver:
+                st.success("✅ Neo4j 数据库连接成功")
+            else:
+                st.warning("⚠️ Neo4j 数据库未连接，使用本地文件模式")
+            
+            st.caption(f"**本地文件路径**: `{INTERACTIONS_FILE}`")
+            if os.path.exists(INTERACTIONS_FILE):
+                st.caption("✅ 本地记录文件已存在")
+            else:
+                st.caption("📝 本地记录文件将在首次记录时自动创建")
+            
+            # 提供初始化数据选项
+            if conn.driver:
+                if st.button("🔄 重新初始化知识图谱数据到Neo4j"):
+                    with st.spinner("正在导入数据..."):
+                        if init_neo4j_data(conn, json_data):
+                            init_interaction_table(conn)
+                            st.success("✅ 数据初始化成功！")
+                        else:
+                            st.error("❌ 数据初始化失败")
+        
         return
     
     df = pd.DataFrame(interactions)
