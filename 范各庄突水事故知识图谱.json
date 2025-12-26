@@ -1,0 +1,603 @@
+{
+  "title": "范各庄矿突水事故知识图谱",
+  "description": "展现事故现象-成因分析-知识原理的逻辑关系",
+  "metadata": {
+    "version": "1.0",
+    "created": "2025-12-26",
+    "case": "1984年开滦范各庄矿奥陶系岩溶陷落柱特大突水灾害"
+  },
+  "nodes": [
+    {
+      "id": "accident_01",
+      "label": "范各庄矿突水事故",
+      "category": "事故现象",
+      "level": 1,
+      "type": "核心事件",
+      "properties": {
+        "时间": "1984年6月2日",
+        "地点": "开滦范各庄矿2171工作面",
+        "性质": "世界采矿史上罕见的特大突水灾害"
+      }
+    },
+    {
+      "id": "phenomenon_01",
+      "label": "高强度突水",
+      "category": "事故现象",
+      "level": 2,
+      "type": "直接表现",
+      "properties": {
+        "涌水量": "2053立方米/分钟",
+        "淹没时间": "20小时55分钟",
+        "淹没范围": "全矿井两个水平"
+      }
+    },
+    {
+      "id": "phenomenon_02",
+      "label": "连锁灾害",
+      "category": "事故现象",
+      "level": 2,
+      "type": "间接影响",
+      "properties": {
+        "波及矿井": "吕家坨、林西、赵各庄、唐家庄等4-5个矿井",
+        "停产范围": "区域性停产",
+        "供水中断": "几十平方公里内供水中断"
+      }
+    },
+    {
+      "id": "phenomenon_03",
+      "label": "巨大损失",
+      "category": "事故现象",
+      "level": 2,
+      "type": "影响评估",
+      "properties": {
+        "经济损失": "5.0亿元（1984年币值）",
+        "社会影响": "20万居民生活受影响",
+        "水位变化": "区域奥灰水位大幅下降"
+      }
+    },
+    {
+      "id": "cause_01",
+      "label": "岩溶陷落柱",
+      "category": "成因分析",
+      "level": 3,
+      "type": "直接原因",
+      "properties": {
+        "位置": "奥陶系灰岩",
+        "特征": "导水性良好",
+        "作用": "突水通道"
+      }
+    },
+    {
+      "id": "cause_02",
+      "label": "高承压含水层",
+      "category": "成因分析",
+      "level": 3,
+      "type": "水源条件",
+      "properties": {
+        "含水层": "奥陶系灰岩强含水层",
+        "水压特征": "高承压",
+        "储水特征": "富水性强"
+      }
+    },
+    {
+      "id": "cause_03",
+      "label": "底板薄弱带",
+      "category": "成因分析",
+      "level": 3,
+      "type": "地质条件",
+      "properties": {
+        "位置": "煤层底板",
+        "特征": "隔水层薄弱",
+        "作用": "抗压能力不足"
+      }
+    },
+    {
+      "id": "cause_04",
+      "label": "地质构造控制",
+      "category": "成因分析",
+      "level": 3,
+      "type": "区域背景",
+      "properties": {
+        "构造位置": "燕山南缘次级向斜",
+        "分布特征": "陷落柱密度小但导水性好",
+        "区域影响": "控制水文地质条件"
+      }
+    },
+    {
+      "id": "principle_01",
+      "label": "岩溶作用",
+      "category": "知识原理",
+      "level": 4,
+      "type": "基础理论",
+      "properties": {
+        "定义": "含CO2的水对碳酸盐岩的溶蚀作用",
+        "反应式": "CaCO3 + H2O + CO2 ⇌ Ca(HCO3)2",
+        "作用": "形成岩溶发育的基础"
+      }
+    },
+    {
+      "id": "principle_02",
+      "label": "岩溶发育条件",
+      "category": "知识原理",
+      "level": 4,
+      "type": "理论要素",
+      "properties": {
+        "固相": "可溶性碳酸盐岩",
+        "液相": "含CO2的水",
+        "气相": "二氧化碳",
+        "动力条件": "水的循环流动"
+      }
+    },
+    {
+      "id": "principle_03",
+      "label": "岩溶水系统形成",
+      "category": "知识原理",
+      "level": 4,
+      "type": "系统演化",
+      "properties": {
+        "化学溶蚀": "初期溶蚀作用",
+        "机械侵蚀": "扩大溶蚀通道",
+        "重力崩塌": "形成大型空间",
+        "系统连通": "形成岩溶水系统"
+      }
+    },
+    {
+      "id": "principle_04",
+      "label": "陷落柱成因",
+      "category": "知识原理",
+      "level": 4,
+      "type": "特殊构造",
+      "properties": {
+        "形成过程": "岩溶发育→洞穴形成→顶板塌陷→充填",
+        "导水特征": "破碎带导水性强",
+        "危害性": "连通深部含水层"
+      }
+    },
+    {
+      "id": "principle_05",
+      "label": "承压水动力学",
+      "category": "知识原理",
+      "level": 4,
+      "type": "水动力理论",
+      "properties": {
+        "承压特征": "受上覆隔水层约束",
+        "水头压力": "补给区与承压区水位差",
+        "突水条件": "隔水层破坏+导水通道"
+      }
+    },
+    {
+      "id": "principle_06",
+      "label": "突水机理",
+      "category": "知识原理",
+      "level": 4,
+      "type": "灾害机制",
+      "properties": {
+        "压力作用": "高承压水向上突破",
+        "通道作用": "陷落柱提供导水通道",
+        "触发条件": "采掘活动破坏底板",
+        "失稳过程": "薄弱带被冲出→大规模涌水"
+      }
+    },
+    {
+      "id": "treatment_01",
+      "label": "综合治理方案",
+      "category": "防治措施",
+      "level": 5,
+      "type": "工程应用",
+      "properties": {
+        "治理方针": "排、截、堵相结合",
+        "治理周期": "约2年",
+        "成果": "1986年实现复产"
+      }
+    },
+    {
+      "id": "treatment_02",
+      "label": "排水工程",
+      "category": "防治措施",
+      "level": 5,
+      "type": "应急措施",
+      "properties": {
+        "设备": "20台大型潜水泵",
+        "流量": "300立方米/分",
+        "作用": "控制水位上升"
+      }
+    },
+    {
+      "id": "treatment_03",
+      "label": "截流工程",
+      "category": "防治措施",
+      "level": 5,
+      "type": "预防措施",
+      "properties": {
+        "注浆加固": "边界煤柱漏水段",
+        "水闸墙": "井下截断水量",
+        "作用": "防止灾害扩大"
+      }
+    },
+    {
+      "id": "treatment_04",
+      "label": "封堵工程",
+      "category": "防治措施",
+      "level": 5,
+      "type": "根治措施",
+      "properties": {
+        "动水注浆": "过水巷道截流",
+        "陷落柱封堵": "源头止水",
+        "技术创新": "多项世界纪录"
+      }
+    },
+    {
+      "id": "significance_01",
+      "label": "技术突破",
+      "category": "历史意义",
+      "level": 6,
+      "type": "成就总结",
+      "properties": {
+        "技术成熟": "治理技术基本成熟",
+        "科技奖项": "国家科技进步二等奖",
+        "国际影响": "开创治理工程先河"
+      }
+    },
+    {
+      "id": "significance_02",
+      "label": "经验传承",
+      "category": "历史意义",
+      "level": 6,
+      "type": "长远影响",
+      "properties": {
+        "学术交流": "1987年召开岩溶陷落柱学术会议",
+        "技术推广": "应用于后续多起事故",
+        "行业地位": "达到国际领先水平"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "source": "accident_01",
+      "target": "phenomenon_01",
+      "type": "表现为",
+      "properties": {
+        "关系": "事故的直接表现",
+        "时序": "同步发生"
+      }
+    },
+    {
+      "source": "accident_01",
+      "target": "phenomenon_02",
+      "type": "引发",
+      "properties": {
+        "关系": "连锁反应",
+        "时序": "后续发生"
+      }
+    },
+    {
+      "source": "accident_01",
+      "target": "phenomenon_03",
+      "properties": {
+        "关系": "造成后果",
+        "时序": "结果评估"
+      },
+      "type": "导致"
+    },
+    {
+      "source": "phenomenon_01",
+      "target": "cause_01",
+      "type": "源于",
+      "properties": {
+        "关系": "直接通道",
+        "逻辑": "突水路径"
+      }
+    },
+    {
+      "source": "phenomenon_01",
+      "target": "cause_02",
+      "type": "源于",
+      "properties": {
+        "关系": "水源供给",
+        "逻辑": "动力来源"
+      }
+    },
+    {
+      "source": "cause_01",
+      "target": "cause_03",
+      "type": "作用于",
+      "properties": {
+        "关系": "突破薄弱带",
+        "逻辑": "形成突水通道"
+      }
+    },
+    {
+      "source": "cause_02",
+      "target": "cause_03",
+      "type": "作用于",
+      "properties": {
+        "关系": "水压冲破",
+        "逻辑": "动力作用"
+      }
+    },
+    {
+      "source": "cause_01",
+      "target": "cause_04",
+      "type": "受控于",
+      "properties": {
+        "关系": "构造控制",
+        "逻辑": "分布规律"
+      }
+    },
+    {
+      "source": "cause_02",
+      "target": "cause_04",
+      "type": "受控于",
+      "properties": {
+        "关系": "构造控制",
+        "逻辑": "水文地质条件"
+      }
+    },
+    {
+      "source": "cause_01",
+      "target": "principle_04",
+      "type": "符合",
+      "properties": {
+        "关系": "理论解释",
+        "逻辑": "成因机制"
+      }
+    },
+    {
+      "source": "principle_04",
+      "target": "principle_01",
+      "type": "基于",
+      "properties": {
+        "关系": "基础作用",
+        "逻辑": "发育起点"
+      }
+    },
+    {
+      "source": "principle_04",
+      "target": "principle_03",
+      "type": "基于",
+      "properties": {
+        "关系": "系统演化",
+        "逻辑": "形成过程"
+      }
+    },
+    {
+      "source": "principle_03",
+      "target": "principle_01",
+      "type": "起于",
+      "properties": {
+        "关系": "初期阶段",
+        "逻辑": "化学溶蚀"
+      }
+    },
+    {
+      "source": "principle_03",
+      "target": "principle_02",
+      "type": "需要",
+      "properties": {
+        "关系": "条件要求",
+        "逻辑": "发育基础"
+      }
+    },
+    {
+      "source": "principle_01",
+      "target": "principle_02",
+      "type": "需要",
+      "properties": {
+        "关系": "必要条件",
+        "逻辑": "固液气三相+水循环"
+      }
+    },
+    {
+      "source": "cause_02",
+      "target": "principle_05",
+      "type": "符合",
+      "properties": {
+        "关系": "理论解释",
+        "逻辑": "承压水特征"
+      }
+    },
+    {
+      "source": "principle_05",
+      "target": "principle_03",
+      "type": "依赖",
+      "properties": {
+        "关系": "系统基础",
+        "逻辑": "岩溶水系统形成承压含水层"
+      }
+    },
+    {
+      "source": "phenomenon_01",
+      "target": "principle_06",
+      "type": "符合",
+      "properties": {
+        "关系": "机理解释",
+        "逻辑": "突水过程"
+      }
+    },
+    {
+      "source": "principle_06",
+      "target": "principle_05",
+      "type": "基于",
+      "properties": {
+        "关系": "动力条件",
+        "逻辑": "承压水提供压力"
+      }
+    },
+    {
+      "source": "principle_06",
+      "target": "principle_04",
+      "type": "基于",
+      "properties": {
+        "关系": "通道条件",
+        "逻辑": "陷落柱提供通道"
+      }
+    },
+    {
+      "source": "accident_01",
+      "target": "treatment_01",
+      "type": "需要",
+      "properties": {
+        "关系": "应对措施",
+        "逻辑": "灾害治理"
+      }
+    },
+    {
+      "source": "treatment_01",
+      "target": "treatment_02",
+      "type": "包括",
+      "properties": {
+        "关系": "排水措施",
+        "逻辑": "治理组成"
+      }
+    },
+    {
+      "source": "treatment_01",
+      "target": "treatment_03",
+      "type": "包括",
+      "properties": {
+        "关系": "截流措施",
+        "逻辑": "治理组成"
+      }
+    },
+    {
+      "source": "treatment_01",
+      "target": "treatment_04",
+      "type": "包括",
+      "properties": {
+        "关系": "封堵措施",
+        "逻辑": "治理组成"
+      }
+    },
+    {
+      "source": "treatment_02",
+      "target": "principle_05",
+      "type": "应用",
+      "properties": {
+        "关系": "理论指导",
+        "逻辑": "控制水位"
+      }
+    },
+    {
+      "source": "treatment_03",
+      "target": "principle_06",
+      "type": "应用",
+      "properties": {
+        "关系": "理论指导",
+        "逻辑": "截断通道"
+      }
+    },
+    {
+      "source": "treatment_04",
+      "target": "principle_04",
+      "type": "应用",
+      "properties": {
+        "关系": "理论指导",
+        "逻辑": "封堵陷落柱"
+      }
+    },
+    {
+      "source": "treatment_04",
+      "target": "principle_06",
+      "type": "应用",
+      "properties": {
+        "关系": "理论指导",
+        "逻辑": "源头止水"
+      }
+    },
+    {
+      "source": "treatment_01",
+      "target": "significance_01",
+      "type": "取得",
+      "properties": {
+        "关系": "成功治理",
+        "逻辑": "技术成就"
+      }
+    },
+    {
+      "source": "significance_01",
+      "target": "significance_02",
+      "type": "促进",
+      "properties": {
+        "关系": "持续影响",
+        "逻辑": "经验传承"
+      }
+    }
+  ],
+  "categories": [
+    {
+      "name": "事故现象",
+      "color": "#FF6B6B",
+      "description": "突水事故的直接表现和影响",
+      "level": 1
+    },
+    {
+      "name": "成因分析",
+      "color": "#4ECDC4",
+      "description": "导致事故的地质和水文地质条件",
+      "level": 2
+    },
+    {
+      "name": "知识原理",
+      "color": "#45B7D1",
+      "description": "支撑成因分析的理论知识",
+      "level": 3
+    },
+    {
+      "name": "防治措施",
+      "color": "#96CEB4",
+      "description": "基于理论的工程治理方案",
+      "level": 4
+    },
+    {
+      "name": "历史意义",
+      "color": "#FFEAA7",
+      "description": "事故治理的长远影响和价值",
+      "level": 5
+    }
+  ],
+  "layout": {
+    "type": "hierarchical",
+    "direction": "TB",
+    "description": "从上到下分层展示：事故现象→成因分析→知识原理→防治措施→历史意义"
+  },
+  "pedagogical_design": {
+    "learning_path": [
+      {
+        "stage": 1,
+        "focus": "事故现象",
+        "objective": "认识突水事故的严重性和复杂性",
+        "nodes": ["accident_01", "phenomenon_01", "phenomenon_02", "phenomenon_03"]
+      },
+      {
+        "stage": 2,
+        "focus": "成因分析",
+        "objective": "理解事故发生的地质条件",
+        "nodes": ["cause_01", "cause_02", "cause_03", "cause_04"]
+      },
+      {
+        "stage": 3,
+        "focus": "知识原理",
+        "objective": "掌握岩溶水系统和突水机理的理论知识",
+        "nodes": ["principle_01", "principle_02", "principle_03", "principle_04", "principle_05", "principle_06"]
+      },
+      {
+        "stage": 4,
+        "focus": "防治措施",
+        "objective": "学习理论知识在工程中的应用",
+        "nodes": ["treatment_01", "treatment_02", "treatment_03", "treatment_04"]
+      },
+      {
+        "stage": 5,
+        "focus": "历史意义",
+        "objective": "理解技术进步和经验传承的重要性",
+        "nodes": ["significance_01", "significance_02"]
+      }
+    ],
+    "key_relationships": [
+      "现象→成因：帮助学生从表象深入到本质",
+      "成因→原理：引导学生用理论解释实际问题",
+      "原理→措施：展示知识到实践的转化",
+      "措施→意义：升华到社会价值层面"
+    ]
+  }
+}
