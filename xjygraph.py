@@ -726,14 +726,14 @@ def student_page(conn, json_data):
                             showNodeDetail(node, nodeId);
                             highlightConnected(nodeId);                            
                             // 记录交互到localStorage
-                            try {
+                            try {{
                                 var pending = localStorage.getItem('pending_interactions');
                                 var interactions = pending ? JSON.parse(pending) : [];
-                                interactions.push({
+                                interactions.push({{
                                     node_id: nodeId,
                                     node_label: node.label || nodeId,
                                     timestamp: new Date().toISOString()
-                                });
+                                }});
                                 localStorage.setItem('pending_interactions', JSON.stringify(interactions));
                             }} catch(e) {{}}                        }}
                     }} else {{
