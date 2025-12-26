@@ -460,22 +460,34 @@ def student_page(conn, json_data):
             
             # 检查 URL 参数中是否有待同步的交互数据
             query_params = st.query_params
-            pending_node = query_params.get("record_node", None)
-            pending_label = query_params.get("record_label", None)
+            pending_data = query_params.get("sync_data", None)
             
-            if pending_node and pending_label:
-                # 记录交互
-                record_interaction(
-                    conn,
-                    st.session_state.student_id,
-                    pending_node,
-                    pending_label,
-                    'view',
-                    0
-                )
-                # 清除 URL 参数
-                st.query_params.clear()
-                st.success(f"✅ 已记录: {pending_label}")
+            if pending_data:
+                try:
+                    import urllib.parse
+                    decoded_data = urllib.parse.unquote(pending_data)
+                    # 格式: node1|label1,node2|label2,...
+                    pairs = decoded_data.split(",")
+                    synced = 0
+                    for pair in pairs:
+                        if "|" in pair:
+                            parts = pair.split("|")
+                            if len(parts) >= 2:
+                                record_interaction(
+                                    conn,
+                                    st.session_state.student_id,
+                                    parts[0],
+                                    parts[1],
+                                    'view',
+                                    0
+                                )
+                                synced += 1
+                    # 清除 URL 参数
+                    st.query_params.clear()
+                    if synced > 0:
+                        st.success(f"✅ 已保存 {synced} 条浏览记录!")
+                except Exception as e:
+                    st.error(f"同步失败: {e}")
             
             # 显示已记录的节点数量
             if conn.driver:
@@ -487,7 +499,7 @@ def student_page(conn, json_data):
                     if result and len(result) > 0:
                         count = result[0].get('count', 0)
                         if count > 0:
-                            st.info(f"📊 已浏览 {count} 个节点")
+                            st.info(f"📊 已保存 {count} 条浏览记录")
                 except:
                     pass
     
@@ -619,11 +631,29 @@ def student_page(conn, json_data):
         <div id="relations-content"></div>
     </div>
     
+    <!-- 保存记录按钮 -->
+    <div id="save-btn-container" style="position:fixed;bottom:20px;right:20px;z-index:9999;display:none;">
+        <button id="save-records-btn" onclick="saveRecords()" style="
+            background: linear-gradient(90deg, #4ECDC4 0%, #45B7D1 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            font-family: 'Microsoft YaHei', sans-serif;
+        ">
+            💾 保存浏览记录 (<span id="record-count">0</span>)
+        </button>
+    </div>
+    
     <script>
     var nodesData = {nodes_json};
     var edgesData = {edges_json};
     var originalColors = {{}};
     var networkRef = null;
+    var clickedNodes = [];  // 记录已点击的节点
     
     function closeDetailPanel() {{
         document.getElementById('node-detail-panel').style.display = 'none';
@@ -737,15 +767,16 @@ def student_page(conn, json_data):
                         var node = nodesData[nodeId];
                         if (node) {{
                             showNodeDetail(node, nodeId);
-                            highlightConnected(nodeId);                            
-                            // 通过 URL 参数将点击记录发送到 Streamlit
-                            try {{
-                                var nodeLabel = encodeURIComponent(node.label || nodeId);
-                                var currentUrl = window.parent.location.href.split('?')[0];
-                                var newUrl = currentUrl + '?record_node=' + encodeURIComponent(nodeId) + '&record_label=' + nodeLabel;
-                                window.parent.location.href = newUrl;
-                            }} catch(e) {{
-                                console.log('Error recording interaction:', e);
+                            highlightConnected(nodeId);
+                            
+                            // 记录点击的节点（避免重复）
+                            var exists = clickedNodes.some(function(n) {{ return n.id === nodeId; }});
+                            if (!exists) {{
+                                clickedNodes.push({{
+                                    id: nodeId,
+                                    label: node.label || nodeId
+                                }});
+                                updateSaveButton();
                             }}
                         }}
                     }} else {{
@@ -755,6 +786,37 @@ def student_page(conn, json_data):
                 }});
             }} else if (attempts < maxAttempts) {{
                 setTimeout(tryBindEvents, 300);
+            }}
+        }}
+        
+        // 更新保存按钮显示
+        function updateSaveButton() {{
+            var container = document.getElementById('save-btn-container');
+            var countSpan = document.getElementById('record-count');
+            if (clickedNodes.length > 0) {{
+                container.style.display = 'block';
+                countSpan.innerText = clickedNodes.length;
+            }} else {{
+                container.style.display = 'none';
+            }}
+        }}
+        
+        // 保存记录到服务器
+        function saveRecords() {{
+            if (clickedNodes.length === 0) return;
+            
+            try {{
+                // 构建数据字符串: node1|label1,node2|label2,...
+                var dataStr = clickedNodes.map(function(n) {{
+                    return encodeURIComponent(n.id) + '|' + encodeURIComponent(n.label);
+                }}).join(',');
+                
+                var currentUrl = window.parent.location.href.split('?')[0];
+                var newUrl = currentUrl + '?sync_data=' + encodeURIComponent(dataStr);
+                window.parent.location.href = newUrl;
+            }} catch(e) {{
+                alert('保存失败，请刷新页面重试');
+                console.log('Error saving records:', e);
             }}
         }}
         
