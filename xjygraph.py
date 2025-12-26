@@ -312,18 +312,17 @@ def create_agraph_data(json_data, selected_node=None):
     # 添加节点
     for node in json_data.get("nodes", []):
         color = CATEGORY_COLORS.get(node["category"], "#888888")
-        size = (40 - (node["level"] - 1) * 5) * 1.5  # 层级越高，节点越小
-        
-        # 如果是选中的节点，使用不同样式
+        # 节点更小，最小10，最大22
+        size = max(10, min(22, 28 - (node["level"] - 1) * 3))
         if selected_node == node["id"]:
             nodes.append(Node(
                 id=node["id"],
                 label=node["label"],
-                size=size + 10,
+                size=size + 4,
                 color=color,
-                font={"size": 16, "color": "#222222"},
-                borderWidth=4,
-                borderWidthSelected=6,
+                font={"size": 15, "color": "#222222"},
+                borderWidth=3,
+                borderWidthSelected=5,
                 shape="dot"
             ))
         else:
@@ -332,8 +331,8 @@ def create_agraph_data(json_data, selected_node=None):
                 label=node["label"],
                 size=size,
                 color=color,
-                font={"size": 14, "color": "#222222"},
-                borderWidth=2,
+                font={"size": 13, "color": "#222222"},
+                borderWidth=1,
                 shape="dot"
             ))
     
@@ -361,7 +360,18 @@ def get_agraph_config():
         highlightColor="#F7A7A6",
         collapsible=False,
         node={'labelProperty': 'label'},
-        link={'labelProperty': 'label', 'renderLabel': True}
+        link={'labelProperty': 'label', 'renderLabel': True},
+        # vis-network physics参数
+        physicsOptions={
+            "barnesHut": {
+                "gravitationalConstant": -3000,
+                "centralGravity": 0.2,
+                "springLength": 220,  # 路径线条更长
+                "springConstant": 0.03,
+                "avoidOverlap": 1
+            },
+            "minVelocity": 0.75
+        }
     )
     return config
 
@@ -446,49 +456,64 @@ def student_page(conn, json_data):
         
         st.markdown("---")
         
-        # ========== 节点选择下拉框（与图谱同步）==========
-        st.markdown("### 📍 节点选择")
-        
-        # 获取所有节点标签
-        node_options = ["-- 请选择节点 --"] + [node["label"] for node in json_data.get("nodes", [])]
-        
-        # 确定当前选中的索引
-        current_index = 0
-        if st.session_state.selected_node_id and st.session_state.selected_node_id in node_labels:
-            current_label = node_labels[st.session_state.selected_node_id]
-            if current_label in node_options:
-                current_index = node_options.index(current_label)
-        
-        # 下拉框选择
-        selected_label = st.selectbox(
-            "选择要查看的知识点",
-            options=node_options,
-            index=current_index,
-            key="node_selector"
-        )
-        
-        # 处理下拉框选择变化
-        if selected_label != "-- 请选择节点 --" and selected_label in label_to_id:
-            new_node_id = label_to_id[selected_label]
-            if new_node_id != st.session_state.selected_node_id:
-                st.session_state.selected_node_id = new_node_id
-                # 记录交互
-                if st.session_state.get("student_id"):
+        # ========== 主区域两栏布局 ==========
+        st.title("🌊 范各庄矿突水事故知识图谱")
+        st.markdown("*1984年开滦范各庄矿奥陶系岩溶陷落柱特大突水灾害案例学习*")
+
+        if not st.session_state.get("student_id"):
+            st.info("💡 请在左侧输入学号和姓名登录")
+            return
+
+        # 图例
+        st.markdown("##### 📊 知识分类")
+        legend_html = "<div style='display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;'>"
+        for cat, color in CATEGORY_COLORS.items():
+            legend_html += f"<span style='background:{color}33;border:1px solid {color};border-radius:4px;padding:2px 8px;font-size:11px;color:{color};'>{cat}</span>"
+        legend_html += "</div>"
+        st.markdown(legend_html, unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # 主区域两栏：左图谱，右知识卡片
+        col1, col2 = st.columns([2, 1], gap="large")
+        with col1:
+            st.markdown("### 🗺️ 知识图谱（点击节点右侧弹卡片）")
+            nodes, edges = create_agraph_data(json_data, st.session_state.selected_node_id)
+            config = get_agraph_config()
+            clicked_node = agraph(nodes=nodes, edges=edges, config=config)
+            # 处理图谱点击事件（同步但不刷新页面）
+            if clicked_node and clicked_node != st.session_state.selected_node_id:
+                st.session_state.selected_node_id = clicked_node
+                if st.session_state.get("student_id") and clicked_node in node_labels:
                     record_interaction(
                         conn,
                         st.session_state.student_id,
-                        new_node_id,
-                        selected_label,
+                        clicked_node,
+                        node_labels[clicked_node],
                         'view',
                         0
                     )
-        
-        st.markdown("---")
-        
-        # ========== 显示选中节点详情 ==========
-        if st.session_state.selected_node_id and st.session_state.selected_node_id in nodes_dict:
-            node_data = nodes_dict[st.session_state.selected_node_id]
-            render_info_card(node_data)
+        with col2:
+            # 右侧知识卡片弹窗
+            if st.session_state.selected_node_id and st.session_state.selected_node_id in nodes_dict:
+                node_data = nodes_dict[st.session_state.selected_node_id]
+                render_info_card(node_data)
+                st.markdown("#### 🔗 相关联系")
+                related_nodes = []
+                for rel in json_data.get("relationships", []):
+                    if rel["source"] == st.session_state.selected_node_id:
+                        target_label = node_labels.get(rel["target"], rel["target"])
+                        related_nodes.append(f"➡️ **{rel.get('type', '关联')}** → {target_label}")
+                    elif rel["target"] == st.session_state.selected_node_id:
+                        source_label = node_labels.get(rel["source"], rel["source"])
+                        related_nodes.append(f"⬅️ {source_label} **{rel.get('type', '关联')}** →")
+                if related_nodes:
+                    for rn in related_nodes:
+                        st.markdown(rn)
+                else:
+                    st.info("暂无关联节点")
+            else:
+                st.info("💡 点击左侧图谱节点或用侧边栏选择节点查看详情")
             
             # 显示关联节点
             st.markdown("#### 🔗 相关联系")
