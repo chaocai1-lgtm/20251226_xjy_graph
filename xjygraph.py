@@ -14,6 +14,7 @@ from pyvis.network import Network
 import streamlit.components.v1 as components
 import hashlib
 import time
+from streamlit_javascript import st_javascript
 
 # ==================== 配置区 ====================
 # 1. 专属标签 (通过修改这个后缀，区分不同的人)
@@ -23,7 +24,7 @@ TARGET_LABEL = "Danmu_xujiying"
 ADMIN_PASSWORD = "admin888"
 
 # 3. 数据库配置
-NEO4J_URI = "neo4j+s://7eb127cc.databases.neo4j.io"
+NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = "wE7pV36hqNSo43mpbjTlfzE7n99NWcYABDFqUGvgSrk"
 
@@ -191,22 +192,8 @@ def init_interaction_table(conn):
         pass
 
 def record_interaction(conn, student_id, node_id, node_label, action_type, duration=0):
-    """记录学生交互行为（支持Neo4j、本地文件和session_state三模式）"""
+    """记录学生交互行为（支持Neo4j和本地文件双模式）"""
     timestamp = datetime.now()
-    
-    # 始终记录到session_state（内存模式，适用于Streamlit Cloud）
-    if 'all_interactions' not in st.session_state:
-        st.session_state.all_interactions = []
-    
-    interaction_record = {
-        "student_id": student_id,
-        "node_id": node_id,
-        "node_label": node_label,
-        "action_type": action_type,
-        "duration": duration,
-        "timestamp": timestamp.strftime('%Y-%m-%d %H:%M:%S')
-    }
-    st.session_state.all_interactions.append(interaction_record)
     
     # 尝试记录到Neo4j
     if conn.driver:
@@ -231,8 +218,11 @@ def record_interaction(conn, student_id, node_id, node_label, action_type, durat
             "duration": duration
         })
     
-    # 尝试记录到本地文件（可能在Streamlit Cloud上失败，但在本地可用）
+    # 同时记录到本地文件（作为备份或在无Neo4j时使用）
     try:
+        # 确保目录存在
+        os.makedirs(os.path.dirname(INTERACTIONS_FILE), exist_ok=True)
+        
         # 读取现有记录
         if os.path.exists(INTERACTIONS_FILE):
             with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
@@ -241,16 +231,23 @@ def record_interaction(conn, student_id, node_id, node_label, action_type, durat
             interactions = []
         
         # 添加新记录
-        interactions.append(interaction_record)
+        interactions.append({
+            "student_id": student_id,
+            "node_id": node_id,
+            "node_label": node_label,
+            "action_type": action_type,
+            "duration": duration,
+            "timestamp": timestamp.strftime('%Y-%m-%d %H:%M:%S')
+        })
         
         # 保存到文件
         with open(INTERACTIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(interactions, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        pass  # 在Streamlit Cloud上会静默失败
+        pass  # 静默失败
 
 def get_all_interactions(conn):
-    """获取所有交互记录（优先从Neo4j，其次session_state，最后本地文件）"""
+    """获取所有交互记录（优先从Neo4j，否则从本地文件）"""
     # 尝试从Neo4j获取
     if conn.driver:
         query = f"""
@@ -267,17 +264,11 @@ def get_all_interactions(conn):
         if result:
             return result
     
-    # 从session_state获取（适用于Streamlit Cloud）
-    if 'all_interactions' in st.session_state and st.session_state.all_interactions:
-        return st.session_state.all_interactions
-    
     # 从本地文件获取
     try:
         if os.path.exists(INTERACTIONS_FILE):
             with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if data:
-                    return data
+                return json.load(f)
     except:
         pass
     
@@ -315,7 +306,7 @@ def load_json_data():
 # ==================== 创建知识图谱可视化 ====================
 def create_knowledge_graph(json_data, selected_node=None):
     """创建交互式知识图谱"""
-    net = Network(height="900px", width="100%", bgcolor="#ffffff", font_color="#333333")
+    net = Network(height="100%", width="100%", bgcolor="#ffffff", font_color="#333333")
     net.barnes_hut(gravity=-3000, central_gravity=0.3, spring_length=200)
     
     # 添加节点
@@ -446,13 +437,6 @@ def render_info_card(node_data):
 def student_page(conn, json_data):
     """学生端：浏览知识图谱"""
     
-    # 从URL参数恢复登录状态（用于页面刷新后保持登录）
-    query_params = st.query_params
-    url_student_id = query_params.get("student_id", None)
-    if url_student_id and not st.session_state.get("student_id"):
-        st.session_state.student_id = url_student_id
-        st.session_state.login_input = url_student_id
-    
     # ========== 左侧侧边栏：登录和节点详情 ==========
     with st.sidebar:
         st.markdown("### 👤 学生登录")
@@ -462,8 +446,6 @@ def student_page(conn, json_data):
             if login_input:
                 st.session_state.login_input = login_input
                 st.session_state.student_id = login_input
-                # 更新URL参数，保持登录状态
-                st.query_params["student_id"] = login_input
                 st.success(f"欢迎, {login_input}!")
             else:
                 st.warning("请输入学号或姓名")
@@ -473,6 +455,37 @@ def student_page(conn, json_data):
         
         st.markdown("---")
         st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
+        
+        # 读取并处理localStorage中的交互记录
+        if st.session_state.get("student_id"):
+            try:
+                interactions_js = st_javascript("""
+                    var interactions = localStorage.getItem('pending_interactions');
+                    if (interactions) {
+                        localStorage.removeItem('pending_interactions');
+                        interactions;
+                    } else {
+                        null;
+                    }
+                """, key=f"read_interactions_{int(time.time())}")
+                
+                if interactions_js:
+                    import json as json_lib
+                    try:
+                        interactions_list = json_lib.loads(interactions_js)
+                        for interaction in interactions_list:
+                            record_interaction(
+                                conn,
+                                st.session_state.student_id,
+                                interaction.get('node_id', ''),
+                                interaction.get('node_label', ''),
+                                'view',
+                                0
+                            )
+                    except:
+                        pass
+            except:
+                pass
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
@@ -499,26 +512,6 @@ def student_page(conn, json_data):
     query_params = st.query_params
     url_selected = query_params.get("selected_node", None)
     
-    # 记录学生点击节点的行为
-    if url_selected and st.session_state.get("student_id"):
-        # 防止重复记录同一个节点（使用session_state跟踪）
-        last_recorded = st.session_state.get("last_recorded_node", None)
-        if last_recorded != url_selected:
-            # 查找节点信息
-            node_info = next((n for n in json_data.get("nodes", []) if n["id"] == url_selected), None)
-            node_label = node_info.get("label", url_selected) if node_info else url_selected
-            
-            # 记录交互
-            record_interaction(
-                conn,
-                st.session_state.student_id,
-                url_selected,
-                node_label,
-                'view',
-                0
-            )
-            st.session_state.last_recorded_node = url_selected
-    
     # 创建并显示图谱
     net = create_knowledge_graph(json_data, url_selected)
     
@@ -541,11 +534,15 @@ def student_page(conn, json_data):
     # 注入点击事件处理 - 在图谱内直接显示节点详情（不刷新页面）
     click_handler = f"""
     <style>
+    *, *::before, *::after {{
+        box-sizing: border-box;
+    }}
     html, body {{
         margin: 0 !important;
         padding: 0 !important;
         border: none !important;
         overflow: hidden !important;
+        background: #ffffff !important;
     }}
     #mynetwork {{
         border: none !important;
@@ -553,6 +550,22 @@ def student_page(conn, json_data):
         box-shadow: none !important;
         margin: 0 !important;
         padding: 0 !important;
+        background: #ffffff !important;
+    }}
+    #mynetwork > div {{
+        border: none !important;
+        outline: none !important;
+    }}
+    .vis-network {{
+        border: none !important;
+        outline: none !important;
+    }}
+    canvas {{
+        border: none !important;
+        outline: none !important;
+    }}
+    div[style*="border"] {{
+        border: none !important;
     }}
     #node-detail-panel {{
         position: fixed;
@@ -740,23 +753,18 @@ def student_page(conn, json_data):
                         var node = nodesData[nodeId];
                         if (node) {{
                             showNodeDetail(node, nodeId);
-                            highlightConnected(nodeId);
-                            
-                            // 更新父窗口URL并刷新页面，触发Streamlit记录访问
+                            highlightConnected(nodeId);                            
+                            // 记录交互到localStorage
                             try {{
-                                var currentUrl = new URL(window.parent.location.href);
-                                var studentId = currentUrl.searchParams.get('student_id') || '';
-                                var baseUrl = currentUrl.origin + currentUrl.pathname;
-                                var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
-                                if (studentId) {{
-                                    newUrl += '&student_id=' + encodeURIComponent(studentId);
-                                }}
-                                // 使用 location.href 触发页面刷新
-                                window.parent.location.href = newUrl;
-                            }} catch(e) {{
-                                console.log('Cannot update parent URL:', e);
-                            }}
-                        }}
+                                var pending = localStorage.getItem('pending_interactions');
+                                var interactions = pending ? JSON.parse(pending) : [];
+                                interactions.push({{
+                                    node_id: nodeId,
+                                    node_label: node.label || nodeId,
+                                    timestamp: new Date().toISOString()
+                                }});
+                                localStorage.setItem('pending_interactions', JSON.stringify(interactions));
+                            }} catch(e) {{}}                        }}
                     }} else {{
                         // 点击空白处关闭面板并恢复颜色
                         closeDetailPanel();
@@ -833,7 +841,7 @@ def student_page(conn, json_data):
     """
     html_content = html_content.replace("</body>", click_handler + "</body>")
     
-    components.html(html_content, height=950, scrolling=False)
+    components.html(html_content, height=1000, scrolling=False)
 
 # ==================== 管理端页面 ====================
 def admin_page(conn, json_data):
@@ -987,110 +995,43 @@ def admin_page(conn, json_data):
     # 数据管理
     st.markdown("## ⚙️ 数据管理")
     
-    col1, col2 = st.columns(2)
-    
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.markdown("### 📥 数据下载")
-        
-        # 下载所有访问记录
-        if len(df) > 0:
-            # 准备下载数据
-            download_df = df[["student_id", "node_id", "node_label", "action_type", "duration", "timestamp"]].copy()
-            download_df.columns = ["学号", "节点ID", "节点名称", "操作类型", "浏览时长(秒)", "时间"]
-            
-            csv_data = download_df.to_csv(index=False, encoding='utf-8-sig')
-            
-            st.download_button(
-                label="📊 下载全部访问记录 (CSV)",
-                data=csv_data,
-                file_name=f"学生访问记录_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-            # 下载学生汇总数据
-            summary_df = df.groupby("student_id").agg({
-                "node_id": "nunique",
-                "node_label": "count",
-                "duration": "sum"
-            }).reset_index()
-            summary_df.columns = ["学号", "访问节点数", "总访问次数", "总学习时长(秒)"]
-            
-            summary_csv = summary_df.to_csv(index=False, encoding='utf-8-sig')
-            
-            st.download_button(
-                label="👥 下载学生汇总数据 (CSV)",
-                data=summary_csv,
-                file_name=f"学生学习汇总_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-            
-            # 下载节点热度数据
-            node_heat_df = df.groupby(["node_id", "node_label"]).size().reset_index(name="访问次数")
-            node_heat_df = node_heat_df.sort_values("访问次数", ascending=False)
-            node_heat_df.columns = ["节点ID", "节点名称", "访问次数"]
-            
-            heat_csv = node_heat_df.to_csv(index=False, encoding='utf-8-sig')
-            
-            st.download_button(
-                label="🔥 下载节点热度数据 (CSV)",
-                data=heat_csv,
-                file_name=f"节点热度统计_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        else:
-            st.info("暂无数据可下载")
+        if st.button("� 重新初始化知识图谱"):
+            with st.spinner("正在重新导入数据..."):
+                if init_neo4j_data(conn, json_data):
+                    st.success("✅ 知识图谱数据已重新初始化")
+                else:
+                    st.error("❌ 初始化失败")
     
     with col2:
-        st.markdown("### 🗑️ 数据清理")
-        
-        st.warning("⚠️ 清除操作不可恢复，请谨慎操作！")
-        
-        # 使用确认机制
-        confirm_clear = st.checkbox("我确认要清除所有学生学习数据")
-        
-        if st.button("🗑️ 清除所有学习数据", type="secondary", disabled=not confirm_clear, use_container_width=True):
-            with st.spinner("正在清除数据..."):
-                cleared = False
-                
-                # 清除Neo4j中的交互记录
-                if conn.driver:
-                    try:
-                        conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
-                        cleared = True
-                    except Exception as e:
-                        st.error(f"清除Neo4j数据失败: {e}")
-                
-                # 清除本地交互记录文件
-                try:
-                    if os.path.exists(INTERACTIONS_FILE):
-                        with open(INTERACTIONS_FILE, 'w', encoding='utf-8') as f:
-                            json.dump([], f)
-                        cleared = True
-                except Exception as e:
-                    st.error(f"清除本地文件失败: {e}")
-                
-                if cleared:
-                    st.success("✅ 所有学生学习数据已清除！")
-                    st.rerun()
+        if st.button("�️ 清除所有访问记录", type="secondary"):
+            if conn.driver:
+                conn.execute_write(f"MATCH (n:Interaction_{TARGET_LABEL}) DELETE n")
+                st.success("✅ 访问记录已清除")
+                st.rerun()
     
-    st.divider()
-    
-    # 数据来源说明
-    st.markdown("### 💾 数据存储说明")
-    st.info("""
-    **当前数据存储方式：本地文件 (interactions_log.json)**
-    
-    - ✅ 优点：无需额外配置，开箱即用
-    - ❌ 缺点：数据存储在服务器本地，多实例部署时数据不同步
-    
-    **如需使用云端数据库（推荐用于生产环境）：**
-    1. 配置 Neo4j 云数据库（如 Neo4j Aura）
-    2. 修改代码中的 NEO4J_URI、NEO4J_USER、NEO4J_PASSWORD
-    3. 云端数据库优势：数据持久化、多端同步、更安全
-    """)
+    with col3:
+        if st.button("🆕 新建数据仓库", type="primary"):
+            st.warning("⚠️ 此操作将清除所有现有数据！")
+            if st.checkbox("我确认要清除所有数据并创建新仓库"):
+                with st.spinner("正在清除数据..."):
+                    # 清除Neo4j数据
+                    if clear_all_data(conn):
+                        st.success("✅ Neo4j数据已清除")
+                    
+                    # 清除本地文件
+                    if clear_local_files():
+                        st.success("✅ 本地文件已清除")
+                    
+                    # 创建新的空白数据仓库
+                    new_data = create_new_data_warehouse()
+                    if save_json_data(new_data):
+                        st.success("✅ 新数据仓库已创建")
+                        st.info("📝 请编辑 JSON 文件来添加节点和关系")
+                        st.rerun()
+                    else:
+                        st.error("❌ 创建新数据仓库失败")
 
 # ==================== 主程序入口 ====================
 def main():
