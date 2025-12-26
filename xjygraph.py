@@ -480,6 +480,26 @@ def student_page(conn, json_data):
     query_params = st.query_params
     url_selected = query_params.get("selected_node", None)
     
+    # 记录学生点击节点的行为
+    if url_selected and st.session_state.get("student_id"):
+        # 防止重复记录同一个节点（使用session_state跟踪）
+        last_recorded = st.session_state.get("last_recorded_node", None)
+        if last_recorded != url_selected:
+            # 查找节点信息
+            node_info = next((n for n in json_data.get("nodes", []) if n["id"] == url_selected), None)
+            node_label = node_info.get("label", url_selected) if node_info else url_selected
+            
+            # 记录交互
+            record_interaction(
+                conn,
+                st.session_state.student_id,
+                url_selected,
+                node_label,
+                'view',
+                0
+            )
+            st.session_state.last_recorded_node = url_selected
+    
     # 创建并显示图谱
     net = create_knowledge_graph(json_data, url_selected)
     
