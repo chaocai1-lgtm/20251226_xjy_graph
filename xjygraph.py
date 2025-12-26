@@ -306,7 +306,7 @@ def load_json_data():
 # ==================== 创建知识图谱可视化 ====================
 def create_knowledge_graph(json_data, selected_node=None):
     """创建交互式知识图谱"""
-    net = Network(height="100%", width="100%", bgcolor="#ffffff", font_color="#333333")
+    net = Network(height="900px", width="100%", bgcolor="#ffffff", font_color="#333333")
     net.barnes_hut(gravity=-3000, central_gravity=0.3, spring_length=200)
     
     # 添加节点
