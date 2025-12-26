@@ -306,7 +306,7 @@ def load_json_data():
 # ==================== 创建知识图谱可视化 ====================
 def create_knowledge_graph(json_data, selected_node=None):
     """创建交互式知识图谱"""
-    net = Network(height="800px", width="100%", bgcolor="#ffffff", font_color="#333333")
+    net = Network(height="100%", width="100%", bgcolor="#ffffff", font_color="#333333")
     net.barnes_hut(gravity=-3000, central_gravity=0.3, spring_length=200)
     
     # 添加节点
@@ -534,10 +534,18 @@ def student_page(conn, json_data):
     # 注入点击事件处理 - 在图谱内直接显示节点详情（不刷新页面）
     click_handler = f"""
     <style>
+    html, body {{
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+    }}
     #mynetwork {{
         border: none !important;
         outline: none !important;
         box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }}
     #node-detail-panel {{
         position: fixed;
@@ -813,7 +821,7 @@ def student_page(conn, json_data):
     """
     html_content = html_content.replace("</body>", click_handler + "</body>")
     
-    components.html(html_content, height=700, scrolling=True)
+    components.html(html_content, height=1000, scrolling=False)
 
 # ==================== 管理端页面 ====================
 def admin_page(conn, json_data):
