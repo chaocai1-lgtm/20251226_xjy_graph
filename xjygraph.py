@@ -191,8 +191,22 @@ def init_interaction_table(conn):
         pass
 
 def record_interaction(conn, student_id, node_id, node_label, action_type, duration=0):
-    """记录学生交互行为（支持Neo4j和本地文件双模式）"""
+    """记录学生交互行为（支持Neo4j、本地文件和session_state三模式）"""
     timestamp = datetime.now()
+    
+    # 始终记录到session_state（内存模式，适用于Streamlit Cloud）
+    if 'all_interactions' not in st.session_state:
+        st.session_state.all_interactions = []
+    
+    interaction_record = {
+        "student_id": student_id,
+        "node_id": node_id,
+        "node_label": node_label,
+        "action_type": action_type,
+        "duration": duration,
+        "timestamp": timestamp.strftime('%Y-%m-%d %H:%M:%S')
+    }
+    st.session_state.all_interactions.append(interaction_record)
     
     # 尝试记录到Neo4j
     if conn.driver:
@@ -217,11 +231,8 @@ def record_interaction(conn, student_id, node_id, node_label, action_type, durat
             "duration": duration
         })
     
-    # 同时记录到本地文件（作为备份或在无Neo4j时使用）
+    # 尝试记录到本地文件（可能在Streamlit Cloud上失败，但在本地可用）
     try:
-        # 确保目录存在
-        os.makedirs(os.path.dirname(INTERACTIONS_FILE), exist_ok=True)
-        
         # 读取现有记录
         if os.path.exists(INTERACTIONS_FILE):
             with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
@@ -230,23 +241,16 @@ def record_interaction(conn, student_id, node_id, node_label, action_type, durat
             interactions = []
         
         # 添加新记录
-        interactions.append({
-            "student_id": student_id,
-            "node_id": node_id,
-            "node_label": node_label,
-            "action_type": action_type,
-            "duration": duration,
-            "timestamp": timestamp.strftime('%Y-%m-%d %H:%M:%S')
-        })
+        interactions.append(interaction_record)
         
         # 保存到文件
         with open(INTERACTIONS_FILE, 'w', encoding='utf-8') as f:
             json.dump(interactions, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        pass  # 静默失败
+        pass  # 在Streamlit Cloud上会静默失败
 
 def get_all_interactions(conn):
-    """获取所有交互记录（优先从Neo4j，否则从本地文件）"""
+    """获取所有交互记录（优先从Neo4j，其次session_state，最后本地文件）"""
     # 尝试从Neo4j获取
     if conn.driver:
         query = f"""
@@ -263,11 +267,17 @@ def get_all_interactions(conn):
         if result:
             return result
     
+    # 从session_state获取（适用于Streamlit Cloud）
+    if 'all_interactions' in st.session_state and st.session_state.all_interactions:
+        return st.session_state.all_interactions
+    
     # 从本地文件获取
     try:
         if os.path.exists(INTERACTIONS_FILE):
             with open(INTERACTIONS_FILE, 'r', encoding='utf-8') as f:
-                return json.load(f)
+                data = json.load(f)
+                if data:
+                    return data
     except:
         pass
     
@@ -721,18 +731,19 @@ def student_page(conn, json_data):
                         var node = nodesData[nodeId];
                         if (node) {{
                             showNodeDetail(node, nodeId);
-                            highlightConnected(nodeId);                            
-                            // 记录交互到localStorage
+                            highlightConnected(nodeId);
+                            
+                            // 通知父窗口更新URL参数，触发Streamlit记录
                             try {{
-                                var pending = localStorage.getItem('pending_interactions');
-                                var interactions = pending ? JSON.parse(pending) : [];
-                                interactions.push({{
-                                    node_id: nodeId,
-                                    node_label: node.label || nodeId,
-                                    timestamp: new Date().toISOString()
-                                }});
-                                localStorage.setItem('pending_interactions', JSON.stringify(interactions));
-                            }} catch(e) {{}}                        }}
+                                var baseUrl = window.parent.location.href.split('?')[0];
+                                var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
+                                window.parent.history.pushState({{}}, '', newUrl);
+                                // 触发Streamlit刷新
+                                window.parent.postMessage({{type: 'streamlit:setComponentValue', value: nodeId}}, '*');
+                            }} catch(e) {{
+                                console.log('Cannot update parent URL:', e);
+                            }}
+                        }}
                     }} else {{
                         // 点击空白处关闭面板并恢复颜色
                         closeDetailPanel();
