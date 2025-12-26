@@ -454,37 +454,53 @@ def student_page(conn, json_data):
             st.markdown(f"✅ 已登录: **{st.session_state.student_id}**")
         
         st.markdown("---")
-        st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
+        st.markdown("💡 **提示**: 点击图谱节点查看详情")
         
-        # 读取并处理localStorage中的交互记录
+        # 同步数据按钮 - 将localStorage中的交互记录同步到服务器
         if st.session_state.get("student_id"):
+            st.markdown("---")
+            st.markdown("#### 📤 数据同步")
+            st.caption("浏览节点后，点击下方按钮保存记录")
+            
+            if st.button("🔄 同步学习记录", use_container_width=True, type="primary"):
+                # 触发页面刷新来读取localStorage
+                st.session_state.sync_key = st.session_state.get('sync_key', 0) + 1
+                st.rerun()
+            
+            # 读取并处理localStorage中的交互记录
             try:
                 interactions_js = st_javascript("""
-                    var interactions = localStorage.getItem('pending_interactions');
-                    if (interactions) {
-                        localStorage.removeItem('pending_interactions');
-                        interactions;
-                    } else {
-                        null;
-                    }
-                """, key=f"read_interactions_{int(time.time())}")
+                    (function() {
+                        var interactions = localStorage.getItem('pending_interactions');
+                        if (interactions) {
+                            localStorage.removeItem('pending_interactions');
+                            return interactions;
+                        }
+                        return null;
+                    })()
+                """, key=f"read_interactions_{st.session_state.get('sync_key', 0)}")
                 
-                if interactions_js:
+                if interactions_js and interactions_js != "null" and interactions_js != None:
                     import json as json_lib
                     try:
                         interactions_list = json_lib.loads(interactions_js)
-                        for interaction in interactions_list:
-                            record_interaction(
-                                conn,
-                                st.session_state.student_id,
-                                interaction.get('node_id', ''),
-                                interaction.get('node_label', ''),
-                                'view',
-                                0
-                            )
-                    except:
-                        pass
-            except:
+                        if interactions_list and len(interactions_list) > 0:
+                            synced_count = 0
+                            for interaction in interactions_list:
+                                record_interaction(
+                                    conn,
+                                    st.session_state.student_id,
+                                    interaction.get('node_id', ''),
+                                    interaction.get('node_label', ''),
+                                    'view',
+                                    0
+                                )
+                                synced_count += 1
+                            if synced_count > 0:
+                                st.success(f"✅ 已同步 {synced_count} 条记录!")
+                    except Exception as e:
+                        st.error(f"同步失败: {e}")
+            except Exception as e:
                 pass
     
     # ========== 主区域 ==========
@@ -744,7 +760,13 @@ def student_page(conn, json_data):
                                     timestamp: new Date().toISOString()
                                 }});
                                 localStorage.setItem('pending_interactions', JSON.stringify(interactions));
-                            }} catch(e) {{}}                        }}
+                                
+                                // 更新待同步计数提示
+                                updateSyncBadge(interactions.length);
+                            }} catch(e) {{
+                                console.log('Error saving interaction:', e);
+                            }}
+                        }}
                     }} else {{
                         // 点击空白处关闭面板并恢复颜色
                         closeDetailPanel();
@@ -753,6 +775,14 @@ def student_page(conn, json_data):
             }} else if (attempts < maxAttempts) {{
                 setTimeout(tryBindEvents, 300);
             }}
+        }}
+        
+        // 更新同步提示
+        function updateSyncBadge(count) {{
+            // 尝试向父窗口发送消息，通知有待同步的数据
+            try {{
+                window.parent.postMessage({{type: 'pending_sync', count: count}}, '*');
+            }} catch(e) {{}}
         }}
         
         function showNodeDetail(node, nodeId) {{
