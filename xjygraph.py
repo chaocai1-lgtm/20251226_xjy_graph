@@ -486,6 +486,43 @@ def student_page(conn, json_data):
                         pass
             except:
                 pass
+        
+        # ========== 节点列表菜单 ==========
+        if st.session_state.get("student_id"):
+            st.markdown("---")
+            st.markdown("### 📋 知识节点列表")
+            
+            # 按类别分组显示节点
+            nodes_by_category = {}
+            for node in json_data.get("nodes", []):
+                cat = node.get("category", "其他")
+                if cat not in nodes_by_category:
+                    nodes_by_category[cat] = []
+                nodes_by_category[cat].append(node)
+            
+            # 显示每个类别的节点
+            for category, nodes in nodes_by_category.items():
+                color = CATEGORY_COLORS.get(category, "#888888")
+                with st.expander(f"📂 {category} ({len(nodes)})", expanded=False):
+                    for node in nodes:
+                        if st.button(f"🔹 {node['label']}", key=f"node_btn_{node['id']}", use_container_width=True):
+                            # 记录点击交互
+                            record_interaction(
+                                conn,
+                                st.session_state.student_id,
+                                node['id'],
+                                node['label'],
+                                'view',
+                                0
+                            )
+                            st.session_state.selected_node = node
+                            st.rerun()
+            
+            # 显示选中节点的详情
+            if st.session_state.get("selected_node"):
+                st.markdown("---")
+                st.markdown("### 📍 节点详情")
+                render_info_card(st.session_state.selected_node)
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
