@@ -14,7 +14,6 @@ from pyvis.network import Network
 import streamlit.components.v1 as components
 import hashlib
 import time
-from streamlit_javascript import st_javascript
 
 # ==================== 配置区 ====================
 # 1. 专属标签 (通过修改这个后缀，区分不同的人)
@@ -455,37 +454,6 @@ def student_page(conn, json_data):
         
         st.markdown("---")
         st.markdown("💡 **提示**: 点击右侧图谱中的节点查看详情")
-        
-        # 读取并处理localStorage中的交互记录
-        if st.session_state.get("student_id"):
-            try:
-                interactions_js = st_javascript("""
-                    var interactions = localStorage.getItem('pending_interactions');
-                    if (interactions) {
-                        localStorage.removeItem('pending_interactions');
-                        interactions;
-                    } else {
-                        null;
-                    }
-                """, key=f"read_interactions_{int(time.time())}")
-                
-                if interactions_js:
-                    import json as json_lib
-                    try:
-                        interactions_list = json_lib.loads(interactions_js)
-                        for interaction in interactions_list:
-                            record_interaction(
-                                conn,
-                                st.session_state.student_id,
-                                interaction.get('node_id', ''),
-                                interaction.get('node_label', ''),
-                                'view',
-                                0
-                            )
-                    except:
-                        pass
-            except:
-                pass
     
     # ========== 主区域 ==========
     st.title("🌊 范各庄矿突水事故知识图谱")
