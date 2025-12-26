@@ -446,6 +446,13 @@ def render_info_card(node_data):
 def student_page(conn, json_data):
     """学生端：浏览知识图谱"""
     
+    # 从URL参数恢复登录状态（用于页面刷新后保持登录）
+    query_params = st.query_params
+    url_student_id = query_params.get("student_id", None)
+    if url_student_id and not st.session_state.get("student_id"):
+        st.session_state.student_id = url_student_id
+        st.session_state.login_input = url_student_id
+    
     # ========== 左侧侧边栏：登录和节点详情 ==========
     with st.sidebar:
         st.markdown("### 👤 学生登录")
@@ -455,6 +462,8 @@ def student_page(conn, json_data):
             if login_input:
                 st.session_state.login_input = login_input
                 st.session_state.student_id = login_input
+                # 更新URL参数，保持登录状态
+                st.query_params["student_id"] = login_input
                 st.success(f"欢迎, {login_input}!")
             else:
                 st.warning("请输入学号或姓名")
@@ -735,8 +744,13 @@ def student_page(conn, json_data):
                             
                             // 更新父窗口URL并刷新页面，触发Streamlit记录访问
                             try {{
-                                var baseUrl = window.parent.location.href.split('?')[0];
+                                var currentUrl = new URL(window.parent.location.href);
+                                var studentId = currentUrl.searchParams.get('student_id') || '';
+                                var baseUrl = currentUrl.origin + currentUrl.pathname;
                                 var newUrl = baseUrl + '?selected_node=' + encodeURIComponent(nodeId);
+                                if (studentId) {{
+                                    newUrl += '&student_id=' + encodeURIComponent(studentId);
+                                }}
                                 // 使用 location.href 触发页面刷新
                                 window.parent.location.href = newUrl;
                             }} catch(e) {{
